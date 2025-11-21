@@ -1,0 +1,665 @@
+body {
+	padding-top: .2em;
+	padding-bottom: .2em;
+}
+
+.center-grid {
+	justify-content: center;
+}
+
+#options .o-grid {
+	align-items: center;
+	margin: .3em 0;
+}
+
+.center-grid .unit-name {
+	flex-basis: 10em;
+	flex-grow: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 7em;
+}
+
+.center-grid .block {
+	flex-basis: 9em;
+	flex-grow: 0;
+	width: auto;
+}
+
+.center-grid .damaged {
+	flex-basis: 2.5em;
+	flex-shrink: 0;
+	flex-grow: 0;
+	min-width: 2.5em;
+}
+
+.center-grid .participants {
+	flex-basis: 2.5em;
+	flex-shrink: 0;
+	flex-grow: 0;
+	min-width: 2.5em;
+}
+
+.center-grid .notBombarding {
+	flex-basis: 2.5em;
+	flex-shrink: 0;
+	flex-grow: 0;
+	min-width: 2.5em;
+}
+
+.center-grid .galvanized {
+	flex-basis: 2.5em;
+	flex-shrink: 0;
+	flex-grow: 0;
+	min-width: 2.5em;
+}
+
+.center-grid .block:first-child {
+	text-align: right;
+}
+
+.spread-grid {
+	justify-content: space-between;
+}
+
+.spread-grid .o-grid__cell {
+	flex-basis: auto;
+	flex-grow: 0;
+	width: auto;
+}
+
+#counters .counter input {
+	text-align: center;
+}
+
+#counters .counter {
+	flex-basis: 11.5em;
+	flex-grow: 0;
+	flex-shrink: 0;
+	/* min-width: 22em; */
+}
+
+#counters .counter .c-button {
+	padding: .2em .3em;
+}
+
+#counters .c-button.upgrade {
+	min-width: 2em;
+}
+
+#counters .counter .count-stepper {
+	padding-left: .8em;
+	padding-right: .8em;
+}
+
+#totals .block {
+	flex-basis: 11.5em;
+	flex-grow: 0;
+	flex-shrink: 0;
+}
+
+#totals .block .count {
+	width: 2.6em;
+	display: inline-block;
+	text-align: center;
+}
+
+#totals .block .count:first-child {
+	margin-left: 2.1em;
+}
+
+#totals .block .count:last-child {
+	margin-right: 2.4em;
+}
+
+#options .heading {
+	margin-top: .6em;
+	margin-bottom: .3em;
+	text-align: center;
+}
+
+#options .o-grid__cell {
+	flex-basis: auto;
+	flex-grow: 0;
+	width: auto;
+	padding: 0 .5em;
+}
+
+#options .o-grid__cell.left-option {
+  flex: 1 0 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+#options .o-grid__cell.right-option {
+	flex: 1 0 0;
+}
+
+#result-area {
+	margin-left: auto;
+	margin-right: auto;
+}
+
+/* stolen from http://stackoverflow.com/questions/3790935/can-i-hide-the-html5-number-inputs-spin-box*/
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+	/* display: none; <- Crashes Chrome on hover */
+	-webkit-appearance: none;
+	margin: 0; /* <-- Apparently some margin are still there even though it's hidden */
+}
+
+input[type=number] {
+	-moz-appearance: textfield;
+	text-align: center;
+	min-width:3em;
+
+	
+}
+
+
+.o-field {
+
+  /* flex: 0 0 3em;      */
+  max-width: 3em;    
+  /* min-width: 2em; */
+  /* width: 3em;        */
+  /* box-sizing: border-box; */
+  /* overflow: hidden;  */
+}
+
+.hidden {
+	visibility: hidden;
+}
+
+.collapsed {
+	display: none !important;
+}
+
+#chart-area {
+	position: absolute;
+	z-index: 1;
+}
+
+#chart-area-overlay {
+	position: absolute;
+	z-index: 0;
+}
+
+.help::after {
+	content: "?";
+}
+
+.help {
+	background: lightblue;
+	border-radius: 20px;
+	width: 20px;
+	display: inline-block;
+	text-align: center;
+	border: 1px solid cornflowerblue;
+	font-weight: bold;
+	color: darkblue;
+	padding: 0;
+}
+
+#help .letter {
+	width: 3em;
+	text-align: center;
+}
+
+.o-grid {
+	margin-top: .1em;
+	margin-bottom: .1em;
+
+	
+}
+
+.center-grid .spacing {
+	flex-basis: 2em;
+	flex-grow: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	/* min-width: 1em; */
+}
+
+.o-grid__cell[type='defender']{
+	min-width:23em;
+	max-width:23em;
+	justify-content: flex-start;
+}
+
+.o-grid__cell[type='attacker']{
+	min-width:23em;
+	max-width:23em;
+	justify-content: flex-end;
+}
+
+.c-button {
+	padding: .3em;
+}
+
+.c-field {
+	padding: .3em;
+
+	
+}
+
+/* workaround blazecss input groups handling a bit */
+.c-input-group .c-button.hidden + .c-button {
+	border-left-width: 1px;
+	margin-left: -1px;
+	
+}
+
+.c-input-group .damaged.hidden + .c-button {
+	border-left-width: 1px;
+	margin-left: -1px;
+	
+}
+
+.left-option {
+	display: flex;
+	text-align: right;
+	align-items: center;
+}
+
+.left-option input {
+	margin-left: .3em;
+}
+
+
+.left-option input[type=number] {
+    margin-left: 0em;
+}
+
+.left-option label {
+    margin-right: 0.3em; /* increase space between label and button/input */
+}
+
+.right-option label {
+    margin-left: 0.3em; /* increase space between label and button/input */
+}
+
+.right-option input[type=number] {
+    margin-right: 0em;
+}
+
+
+
+.right-option {
+	display: flex;
+	text-align: left;
+	align-items: center;
+}
+
+.right-option input {
+	margin-right: .3em;
+}
+
+#counters .o-grid.attacker-participates.defender-participates .unit-name {
+	background: #f0f0ff;
+}
+
+#counters .o-grid.attacker-participates .unit-name {
+	background: linear-gradient(0.25turn, #f0f0ff, #f0f0ff 70%, white 90%, white);
+}
+
+#counters .o-grid.defender-participates .unit-name {
+	background: linear-gradient(-0.25turn, #f0f0ff, #f0f0ff 70%, white 90%, white);
+}
+
+#chart-size-selector {
+	display: flex;
+	align-items: center;
+	margin-top: .5em;
+}
+
+#spinner-container {
+	position: absolute;
+	z-index: 10;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+@keyframes rotate-forever {
+	0% {
+		transform: rotate(0deg);
+	}
+	100% {
+		transform: rotate(360deg);
+	}
+}
+
+.loading-spinner {
+	animation-duration: 0.75s;
+	animation-iteration-count: infinite;
+	animation-name: rotate-forever;
+	animation-timing-function: linear;
+	height: 30px;
+	width: 30px;
+	border: 8px solid black;
+	border-right-color: transparent;
+	border-radius: 50%;
+	display: inline-block;
+	margin: 0 auto;
+}
+
+
+
+
+
+
+
+
+
+
+
+/* ---------- Fleet breakdown container (slightly smaller, closer spacing) ---------- */
+#fleet-breakdown {
+  width: 100%;
+  max-width: min(calc(100% * 1.5), 1200px);
+  margin-left: auto;
+  margin-right: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0.45em;              /* tighter gap so cards sit closer to central VS */
+  padding: 0.35em;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fafafa;
+  box-sizing: border-box;
+}
+
+/* fleet columns */
+#fleet-breakdown .fleet-column {
+  min-width: 0;
+  max-width: 48%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  box-sizing: border-box;
+  margin-left: -4px;  /* pull attacker/defender slightly closer */
+  margin-right: -4px;
+}
+
+/* fleet row with wrapping */
+.fleet-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.12em;
+  padding: 0.12em 0;
+  overflow: visible;
+  flex-wrap: wrap;
+  box-sizing: border-box;
+}
+
+/* attacker right-to-left */
+.fleet-row.attacker-row {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+}
+
+/* defender left-to-right */
+.fleet-row.defender-row {
+  flex-direction: row;
+  justify-content: flex-start;
+}
+
+/* ---------- Unit card: fixed-size, smaller, rotation-safe ---------- */
+.fleet-unit {
+  display: inline-block !important;
+  position: relative !important;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+  box-sizing: border-box !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 4px !important;
+  border: 1px solid #bbb !important;
+  background: white !important;
+  overflow: hidden !important;
+  vertical-align: middle !important;
+  user-select: none !important;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.03) !important;
+  transition: transform 0.12s ease, background 0.12s ease !important;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+/* hover lift only */
+.fleet-unit:hover {
+  transform: translateY(-2px);
+}
+
+/* letter centered, rotated inside fixed box */
+.fleet-unit .letter {
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%, -50%) rotate(0deg) !important;
+  transform-origin: center center !important;
+  transition: transform 0.12s ease !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  line-height: 32px !important;
+  text-align: center !important;
+  font-weight: 700 !important;
+  box-sizing: border-box !important;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  text-rendering: geometricPrecision !important;
+  backface-visibility: hidden !important;
+  will-change: transform !important;
+  pointer-events: none;
+}
+
+/* rotated when damaged */
+.fleet-unit.damaged .letter {
+  transform: translate(-50%, -50%) rotate(90deg) !important;
+}
+
+/* damaged: style only, no size change */
+.fleet-unit.damaged {
+  background: white !important;
+  border-color: #bbb !important;
+  width: 32px !important;
+  height: 32px !important;
+  box-sizing: border-box !important;
+}
+
+/* galvanized: style only, no size change */
+.fleet-unit.galvanized {
+  background: hsl(32, 100%, 93%) !important;
+  /* border-color: hsl(13, 53%, 90%) !important; */
+  width: 32px !important;
+  height: 32px !important;
+  box-sizing: border-box !important;
+}
+
+/* both flags: keep fixed size */
+.fleet-unit.damaged.galvanized {
+  width: 32px !important;
+  height: 32px !important;
+  box-sizing: border-box !important;
+}
+
+/* separator */
+.separator {
+  padding: 0.05em 0.2em;
+  margin: 0 0.1em;
+  font-weight: 700;
+  color: #666;
+  font-size: 0.92em;
+}
+
+
+
+
+
+/* ---------- Modal: give property labels more room ---------- */
+.modal-card {
+  background: white;
+  padding: 1em 1.2em;
+  border-radius: 6px;
+  min-width: 320px;           /* slightly larger so wider labels have space */
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+  box-sizing: border-box;
+}
+
+/* Homogeneous property rows — give labels more room */
+.modal-card .prop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25em 0;
+  border-bottom: 0px solid transparent;
+  gap: 0.75em;
+}
+
+/* Wider label column: bump to ~8.5em (was 5.2em). Allow multiline labels. */
+.modal-card .prop-row .prop-label {
+  flex: 0 0 8.5em;
+  font-weight: 600;
+  opacity: 0.9;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.1;
+}
+
+/* Value area remains flexible and left-aligned */
+.modal-card .prop-row .prop-value {
+  flex: 1 1 auto;
+  text-align: left;
+  min-width: 6ch;
+  box-sizing: border-box;
+}
+
+/* number input sizing inside modal */
+.modal-card .c-input-group input[type=number] {
+  min-width: 3.6em;
+  text-align: center;
+}
+
+/* damaged row sits below others */
+.modal-card .damaged-row {
+  margin-top: 0.4em;
+  padding-top: 0.4em;
+  border-top: 1px dashed #eee;
+}
+
+/* ---------- Fleet card special states (no size changes) ---------- */
+
+/* red border when not participating */
+.fleet-unit.notParticipating,
+.fleet-unit.notParticipating.galvanized,
+.fleet-unit.notParticipating.damaged {
+  border-color: #e03b3b !important; /* vivid red border */
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+  box-sizing: border-box !important;
+}
+
+/* blue text when notInitBombardment */
+.fleet-unit.notInitBombardment .letter,
+.fleet-unit.notInitBombardment.galvanized .letter,
+.fleet-unit.notInitBombardment.damaged .letter {
+  color: #1e6fff !important; /* vivid blue text */
+}
+
+/* ensure color rules don't affect size */
+.fleet-unit.notInitBombardment,
+.fleet-unit.notInitBombardment.galvanized,
+.fleet-unit.notInitBombardment.damaged {
+  width: 32px !important;
+  height: 32px !important;
+  box-sizing: border-box !important;
+}
+
+
+
+
+
+
+
+
+
+/* ---------- Heading Toggle ---------- */
+.heading-toggle {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 0.12em 0.25em;
+  user-select: none;
+  position: relative;
+}
+
+/* Flex container to push caret+title 3/8 across */
+.heading-toggle .title-block {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;          /* small gap between caret and title */
+  margin-left: 37.5%;    /* moves block 3/8 along the row */
+}
+
+/* Caret triangle */
+.heading-toggle .caret {
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 8px solid #333;
+  transition: transform 180ms ease, opacity 120ms ease;
+  transform-origin: center;
+  opacity: 0.95;
+}
+
+/* Rotate caret when section is open */
+.heading-toggle.open .caret {
+  transform: rotate(90deg);
+}
+
+/* Heading title text */
+.heading-toggle .heading-title {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.section-body {
+  overflow: hidden;
+  padding: 0 0.25em 0.1em 0.25em; /* default padding */
+}
+
+/* Option animation */
+.option-wrapper {
+  transform: translateY(-8px);
+  opacity: 0;
+  transition-property: transform, opacity;
+  transition-duration: 260ms;
+  transition-timing-function: cubic-bezier(.2,.9,.2,1);
+  will-change: transform, opacity;
+}
+
+.option-wrapper.is-visible {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.option-wrapper + .option-wrapper {
+  margin-top: 0.15em;
+}
+
+
+

@@ -1,0 +1,118 @@
+Action Cards:
+Lash: When 1 of your units is destroyed: 	Destroy a unit in its system that has an equal or lower cost. 
+Converge: Before you roll dice for SPACE CANNON: Your hits must be applied to non-fighter ships during SPACE CANNON OFFENSE, or mechs during SPACE CANNON DEFENSE, if able. 
+Divinity: When 1 of your units would be destroyed: 	It is not destroyed instead.
+Meddle: When any die is rolled: Add or subtract 1 from its result. (not implementing)
+Meld: When a die is rolled by any player: Roll two dice instead, and add the results together (max 10).
+Hardlight: Before hits are assigned to your units: Cancel up to 2 hits.
+Spark: After another player's unit uses SUSTAIN DAMAGE to cancel a hit produced by your units or abilities: Destroy that unit. 
+
+Courageous to the End: After 1 of your ships is destroyed during a space combat: Roll 2 dice. For each result equal to or greater than that ship's combat value, your opponent must choose and destroy 1 of their ships.
+Emergency Repairs: At the start or end of a combat round: Repair all of your units that have Sustain Damage in the active system.
+Experimental Battlestation: Choose 1 of your space docks that is either in or adjacent to that system. That space dock uses Space Cannon 5 (x3) against ships in the active system. 
+
+Heros:
+Artemis Ascendant: Keleres hero, start of space combat, flagship and cruisers
+Intelligence Unshackeled: (almost last bastion hero) When one of your units is destroyed: Roll 1 die for each other player's unit in the system. for each result eal to or greater than the catalysts combat value, destroy that unit.
+Blessing of the Yin: No space cannon
+Awakening: titans hero, elysium unit
+Insurrection: mentak hero, steal ships
+
+
+Abilities:
+Proxima Targeting VI: Cancel 1 hit produced by each bombardment roll against your units. At the start of a round o ground combat, you may resolve a bombardment 7 (x) against you opponents and your own ground forces.
+Smothering Presence: Units losing all unit abilties.
+Zealous: roll for a unit ability, 1 unit rolls 1 additional dice.
+Raid Formation: When 1 or more of you units use ANTI-fighter barrage: for each hit produced in excess of you opponent's fighters, choose 1 of your opponent's ships that has sustain damage to become damaged.
+Supercharge: before making a combat roll: choose 1 of your units and apply +2 to the results of its combat rolls.
+Devotion: after each space combat round: You may destroy 1 of your curisers of destroyers in the active system to produce 1 hit and assign it to 1 of your opponent's ships in that ysstem. (not implementing)
+Indoctrination: Yin's indoctrination
+Tactical Brillian: Jolnar's commander
+Unrelenting: sardakk's unrelenting
+Harrow: L1Z1X's harrow
+Ambush: mentak's ambush
+Valkyrie Particle Weave: After making combat rols during a round of ground combat: If your opponent produced 1 or more hits, you produce 1 additional hit.
+Dimensional Splicer: ghost's dimensional splicer
+Non-Euclidean Shielding: Letnev's non-euclidean shielding
+Planesplitter: Apply +2 to the results of each of your unit's combat rolls in The Fracture.
+Smothering Presense: Other players' units in or adjacent to systems that contain your structures lose all of their unit abilities. 
+
+Mahacts:
+Warsuns: 12-5(x2)-0-6
+
+Radiant Aur: 
+Mech: (Planetary shield) At the start of each round of ground combat, you may spend 1 token from your strategy pool to repair all of your mechs.
+Flagship: 8-7(x2)-1-6 (AFB 5 (x3))
+
+Avarice Rex:
+Flagship: 8-9(x2)-1-3
+
+Nightbloom:
+Flagship: 8-7(x2)-1-6
+
+Saint of Swords: 
+Mech: While this unit is being transpored, choose 1 unit in its system that has a capacity value to roll 1 additional die on its combat rolls.
+Flagship: 8-3-2-4
+
+Il Na Viroset:
+Mech: This unit participates in space combat as if it were a ship. For each anomaly this unit is in or adjacent to, apply +1 to this unit's combat rolls.
+Flagship: 7-7-7-7
+
+El Nen Janovet:
+Flagship: 8-5(x2)-1-3 This unit gains the unit abilities and text abilities of your destroyer, cruiser, and dreadnought unit upgrade technologies.
+
+A Sickening Lurch:
+Mech: 2-5(x2) When you splice, capture 1 infantry from the reinforcements of any player with adjacent units; you can spend 1 captured infantry after rolling during combat to reroll this unit's dice. (not implementing)
+Flagship: 7-7(x2)-1-1 (Bombardment 7)
+
+The Ruby Monarch:
+Flagship: 8-5(x2)-2-3
+
+
+
+
+New-Faction Abilities:
+
+Last Bastion:
+Galvanize: Galvanized units roll 1 additional die for combat rolls and unit abilities.
+Proxima Targeting VI: Cancel 1 hit produced by BOMBARDMENT rolls made against your ground forces for each of your galvanized units present. At the start of a round of ground combat, you may resolve BOMBARDMENT 8 (x3) against your opponents ground forces; if you do, make an identical roll against your own ground forces.
+Flagship: 8-9-1-3 Apply +1 to the results of each of this unit's combat rolls for each non-home system that contains a planet you control.
+Mechs: When this unit is destroyed, if it was galvanized, galvanize up to 3 of your infantry in its system.
+Agent: When a player's unit is destroyed: You may exhaust this card to galvanize another of that player's units in the destroyed unit's system.
+Hero: When one of your galvanized units is destroyed: You may purge this card to roll 1 die for each unit in its system that belongs to another player; if the result is equal to or greater than the galvanized unit's combat value, destroy that unit. 
+
+Ral-Nel:
+MINIATURIZATION: While your structures are in the space area, they cannot use their unit abilities.
+Destroyer: 1-9-3-_ This unit can use the SPACE CANNON ability of one of your structures in its space area; each structure can only be triggered once.
+Destroyer II: 1-8-4-_ This unit can use the SPACE CANNON ability of one of your structures in its space area; each linkship can trigger the same structure. 
+Flagship: 8-8(x2)-2-4 When this unit retreas, you may destroy 1 ship in the active system that does not have SUSTAIN DAMAGE. (not implementing)
+Mech: At the end of a round of combat on this planet, you may move up to 2 of your ground forces to this planet from planets in adjacent systems.
+
+Deep-Wrought:
+Flagship: 8-7(x2)-1-6
+
+Crimson Rebellion:
+Destroyer: 1-8-2-_
+Destroyer II: 1-7-2-_
+Flagship: 8-5(x2)-1-3 While this unit is in a system that contains an active breach, other players units in systems with active breaches lose all their unit abilities.
+Hero: At the start of a space combat, you may purge this card to place all ships from this card into the active system.  (not implementing)
+
+Firmament:
+Flagship: 8-5(x2)-1-3 If the Active System contains units that belong to a player who has a Control Token on one of your Plots, apply +1 to this ship's move value and repair it at the end of every Combat Round. 
+Agent: No Space Cannon OFFENSE
+
+Obsidian:
+Flagship: 8-5(x3)-1-3
+Agent: When a players ship is destroyed during any combat, you may exhaust this card; If you do, that player's opponent must destroy one of their ships of the same type in the active system. 
+Commander: Apply +1 to the result of each of your units' combat rolls in the fracture. 
+Assail Plot: Apply +1 to the results of each of your combat and unit ability rolls against the puppeted player.
+
+New abilities:
+Winnu Breakthrough: Apply +1 to the results of each of your unit's combat rolls for each "support for the throne" in your opponent's play area.
+Barony Breathrough: Before you roll dice during space combat, apply +X to the results of 1 of your ship's rolls, where X is the number of shp types you have in the combat.
+
+Relics:
+Metali Void Shielding: Each time hits are produced against 1 or more of your non-fighter ships, 1 of those ships may use SUSTAIN DAMAGE as if it had that ability.
+Lightrail Ordnance: Your space docks gain SPACE CANNON 5 (x2). You may use your space dock's SPACE CANNON against ships that are adjacent to their system.
+Metali Void Armaments: During the "Anti-fighter barrage" step of space combat, you may resolve ANTI-fighter barrage 6 (x3) against your opponent;s units. 
+Heart of Ixth: After any die is rolled, you may exhaust this card to add or subtract 1 from its results. (not implementing)

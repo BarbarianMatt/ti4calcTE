@@ -1,0 +1,468 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<!-- <meta name="viewport" content="width=480, initial-scale=1, shrink-to-fit=no"> -->
+	 <meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta http-equiv="Content-Language" content="en">
+	<title>Twilight Imperium IV battle calculator</title>
+
+	<link href="css/normalize.min.css" type="text/css" rel="stylesheet"/>
+	<link href="css/generics.global.min.css" type="text/css" rel="stylesheet"/>
+	<link href="css/objects.containers.min.css" type="text/css" rel="stylesheet"/>
+	<link href="css/objects.grid.min.css" type="text/css" rel="stylesheet"/>
+	<link href="css/components.buttons.min.css" type="text/css" rel="stylesheet"/>
+	<link href="css/components.input-groups.min.css" type="text/css" rel="stylesheet"/>
+	<link href="css/components.inputs.min.css" type="text/css" rel="stylesheet"/>
+	<link href="css/index_style.css" type="text/css" rel="stylesheet"/>
+	<link rel="shortcut icon" href="favicon.gif" type="image/x-icon"/>
+<!-- -->
+	<script type="text/javascript" src="js/jquery-3.6.0.slim.min.js">/*RGraph needs jQuery. I don't*/</script>
+	<script type="text/javascript" src="js/vue.min.js"></script>
+	<script type="text/javascript" src="js/RGraph.min.js"></script>
+	<script type="text/javascript" src="structs.js"></script>
+	<script type="text/javascript" src="game-elements.js"></script>
+	<script type="text/javascript" src="calculator.js"></script>
+	<script type="text/javascript" src="imitator.js"></script>
+	<script type="text/javascript" src="version.js"></script>
+</head>
+<body>
+<div id="root">
+<div class="o-container o-container--small">
+	<div class="o-grid center-grid">
+		<div class="o-grid__cell block"><strong>Attacker</strong></div>
+		<div class="unit-name"></div>
+		<div class="o-grid__cell block"><strong>Defender</strong></div>
+	</div>
+	<div class="o-grid center-grid">
+		<select v-model="options.attacker.faction" class="o-grid__cell c-field block">
+			<option v-for="(name, key) in attackerFactionList" :value="key">
+				{{ name }}
+			</option>
+		</select>
+
+		<div class="spacing"></div>
+
+		<button type="button" class="c-button u-small"
+					:class="{ 'c-button--brand': twilightsFall,
+								'c-button--ghost-brand': !twilightsFall }"
+					@click="twilightsFall = !twilightsFall">Twilight's Fall
+			</button>
+
+		<div class="spacing"></div>
+
+		<select v-model="options.defender.faction" class="o-grid__cell c-field block">
+			<option v-for="(name, key) in defenderFactionList" :value="key">
+				{{ name }}
+			</option>
+		</select>
+	</div>
+	<div id="counters">
+		<div class="o-grid o-grid--no-gutter center-grid" v-for="(name, key) in UnitType"
+			 :class="{ 'attacker-participates': participates(BattleSide.attacker, name),
+						'defender-participates': participates(BattleSide.defender, name), collapsed: unitTypeSideVisible('attacker',key) && unitTypeSideVisible('defender',key)}">
+
+			<div class="o-grid__cell counter c-input-group attacker"  type="attacker"
+				:class="{ hidden: unitTypeSideVisible('attacker',key)}">
+
+				
+				
+				
+
+				
+
+				<select v-model="units.attacker[key].damaged" class="damaged"
+						:class="{ hidden: !damagedVisible('attacker', key) }"
+						title="Units already damaged before the battle">
+					<option v-for="d in listCount(units.attacker[key].count)" v-bind:value="d">{{ d }}</option>
+				</select>
+
+				<button type="button" class="c-button upgrade"
+						:class="{ 'c-button--brand': units.attacker[key].upgraded,
+									'c-button--ghost-brand': !units.attacker[key].upgraded,
+									hidden: !upgradeable(key, unitsVersion.attacker, twilightsFall, options.attacker.options) }"
+						:title="units.attacker[key].upgraded ? 'Un-upgrade' : 'Upgrade'"
+						@click="units.attacker[key].upgraded = !units.attacker[key].upgraded">
+					{{ units.attacker[key].upgraded ? '\u25B2' : '\u25b3' }}
+				</button>
+
+				<button type="button" class="c-button c-button--ghost-brand count-stepper" title="Remove unit"
+						@click="decrement(units.attacker[key])">-
+				</button>
+				
+				<div class="o-field">
+					<input v-model.number="units.attacker[key].count" class="c-field" type="number" min="0">
+				</div>
+				
+				<button type="button" class="c-button c-button--ghost-brand count-stepper" title="Add unit"
+						@click="increment(units.attacker[key])">+
+				</button>
+			</div>
+			<div class="unit-name"><span>{{displayName(name)}}</span></div>
+			<div class="o-grid__cell counter c-input-group defender" type="defender"
+				:class="{ hidden: unitTypeSideVisible('defender',key)}">
+				<button type="button" class="c-button c-button--ghost-brand count-stepper" title="remove unit"
+						@click="decrement(units.defender[key])">-
+				</button>
+				<div class="o-field">
+					<input v-model.number="units.defender[key].count" class="c-field" type="number" min="0">
+				</div>
+				<button type="button" class="c-button c-button--ghost-brand count-stepper" title="Add unit"
+						@click="increment(units.defender[key])">+
+				</button>
+				<button type="button" class="c-button upgrade"
+						:class="{ 'c-button--brand': units.defender[key].upgraded,
+									'c-button--ghost-brand': !units.defender[key].upgraded,
+									hidden: !upgradeable(key, unitsVersion.defender, twilightsFall, options.defender.faction) }"
+						:title="units.defender[key].upgraded ? 'Un-upgrade' : 'Upgrade'"
+						@click="units.defender[key].upgraded = !units.defender[key].upgraded">
+					{{ units.defender[key].upgraded ? '\u25B2' : '\u25b3' }}
+				</button>
+
+				<select v-model="units.defender[key].damaged" class="damaged"
+						:class="{ hidden: !damagedVisible('defender', key) }"
+						title="Units already damaged before the battle">
+					<option v-for="c in listCount(units.defender[key].count)" v-bind:value="c">{{ c }}</option>
+				</select>
+
+				
+
+			
+
+				
+				
+				
+			</div>
+		</div>
+	</div>
+	<div id="totals" class="o-grid o-grid--no-gutter center-grid">
+		<div class="o-grid__cell block">
+			<span>{{costs.attacker.cost}} res</span>
+			<span class="count">{{costs.attacker.count}} #</span>
+			
+		</div>
+		<div class="unit-name"><span>Totals</span></div>
+		<div class="o-grid__cell block">
+			<span class="count">{{costs.defender.count}} #</span>
+			<span>{{costs.defender.cost}} res</span>
+		</div>
+	</div>
+	<div class="o-grid o-grid--no-gutter center-grid">
+		<div class="o-grid__cell block">
+			<button type="button" class="c-button c-button--ghost-brand u-small"
+					@click="clear('attacker')">Clear Attacker
+			</button>
+		</div>
+		<div class="unit-name"><span>Rounds: {{accumulation.rounds.toFixed(3)}}</span></div>
+		
+		<div class="o-grid__cell block">
+			<button type="button" class="c-button c-button--ghost-brand u-small"
+					@click="clear('defender')">Clear Defender
+			</button>
+		</div>
+	</div>
+
+
+	
+
+	<div class="o-grid o-grid--no-gutter center-grid spread-grid">
+		
+		<div class="unit-name"><span>{{getTGDisplay('attacker')}}</span></div>
+		<div class="o-grid__cell c-input-group">
+			<button type="button" class="c-button u-small"
+					:class="{ 'c-button--brand': showBreakdown,
+								'c-button--ghost-brand': !showBreakdown }"
+					@click="toggleBreakdown()">Fleet Breakdown
+			</button>
+		</div>
+		<div class="unit-name"><span>{{getTGDisplay('defender')}}</span></div>
+		
+	</div>
+
+
+	
+
+	
+	<div class="o-grid o-grid--no-gutter spread-grid">
+		
+		<div class="o-grid__cell">
+			
+
+			<button type="button" class="c-button u-small"
+					:class="{ 'c-button--brand': showOptions,
+								'c-button--ghost-brand': !showOptions }"
+					@click="showOptions = !showOptions">Options
+			</button>
+			
+		</div>
+		<div class="o-grid__cell c-input-group">
+			<button type="button" class="c-button"
+					:class="{ 'c-button--brand': battleType === BattleType.Space,
+								'c-button--ghost-brand': battleType !== BattleType.Space }"
+					@click="battleType = BattleType.Space">Space Battle
+			</button>
+			<button type="button" class="c-button"
+					:class="{ 'c-button--brand': battleType === BattleType.Ground,
+								'c-button--ghost-brand': battleType !== BattleType.Ground }"
+					@click="battleType = BattleType.Ground">Invasion Combat
+			</button>
+		</div>
+		<div class="o-grid__cell">
+			<button type="button" class="c-button u-small"
+					:class="{ 'c-button--brand': showHelp,
+								'c-button--ghost-brand': !showHelp }"
+					@click="showHelp = !showHelp">Help
+			</button>
+		</div>
+	</div>
+
+
+
+
+
+	<!-- Fleet Breakdown visual area -->
+	<div id="fleet-breakdown" v-if="showBreakdown" class="o-grid center-grid" style="margin-top:0.6em;">
+	<!-- Attacker column -->
+	<div class="o-grid__cell fleet-column" type="attacker">
+		<div class="heading" style="text-align: right;"><strong>Attacker</strong></div>
+		
+		<!-- row: right->left, wrap allowed -->
+		<div class="fleet-row attacker-row">
+		<div v-for="(unit, idx) in breakdown.attacker" :key="'a-'+idx"
+			class="fleet-unit"
+			@click="openUnit(unit, 'attacker', idx)"
+			v-bind:class="unitDynamicClasses(unit)"
+			title="Click to view/edit properties">
+		<span class="letter">{{ unit.shortType }}</span>
+		</div>
+
+		</div>
+	</div>
+
+	<!-- spacer/separator -->
+	<div class="o-grid__cell spacing" style="align-items:center;">
+		<div class="separator">— VS —</div>
+	</div>
+
+	<!-- Defender column -->
+	<div class="o-grid__cell fleet-column" type="defender">
+		<div class="heading"><strong>Defender</strong></div>
+		<!-- row: left->right, wrap allowed -->
+		<div class="fleet-row defender-row">
+		<div v-for="(unit, idx) in breakdown.defender" :key="'d-'+idx"
+			class="fleet-unit"
+			@click="openUnit(unit, 'defender', idx)"
+			v-bind:class="unitDynamicClasses(unit)"
+			title="Click to view/edit properties">
+		<span class="letter">{{ unit.shortType }}</span>
+		</div>
+
+		</div>
+	</div>
+	</div>
+
+	<!-- Unit properties modal: modular renderer -->
+	<div v-if="showUnitModal" class="modal-overlay" @click.self="closeUnitModal()">
+	<div class="modal-card">
+		<h3>Unit properties</h3>
+
+		<!-- Dynamically render each property of selectedUnit in a homogeneous style.
+			Skip 'shortType' because it's shown as 'Type' separately. -->
+		
+
+		<!-- dynamic props -->
+		<template v-if="selectedUnit">
+		<div v-for="(val, key) in visibleProperties(selectedUnit)" :key="key">
+			<div class="prop-row" v-if="">
+			<div class="prop-label">{{ prettyLabel(key) }}</div>
+			<div class="prop-value">
+				<!-- boolean -> checkbox -->
+				<template v-if="isBooleanProp(key)">
+				<input type="checkbox" v-model="selectedUnit[key]" @change="onPropChanged(key, selectedUnit)">
+				</template>
+
+				<!-- number -> number input with +/- (0..10 default, override for 'number' specifically) -->
+				<template v-else-if="isNumberProp(key)">
+				<div class="c-input-group">
+					<button type="button" class="c-button c-button--ghost-brand count-stepper"
+							@click="decrementProp(key)">-</button>
+					<input type="number" v-model.number="selectedUnit[key]" :min="propMin(key)" :max="propMax(key)" :step="propStep(key)">
+					<button type="button" class="c-button c-button--ghost-brand count-stepper"
+							@click="incrementProp(key)">+</button>
+				</div>
+				</template>
+
+				<!-- fallback: show as text -->
+				<template v-else>
+				<div>{{ selectedUnit[key] }}</div>
+				</template>
+			</div>
+			</div>
+		</div>
+		</template>
+
+		<div style="text-align:right; margin-top:.6em;">
+		<button class="c-button" @click="closeUnitModal()">Close</button>
+		</div>
+	</div>
+	</div>
+
+
+
+
+
+
+
+	
+
+
+	<div id="options" :class="{ collapsed: !showOptions }">
+		
+
+		
+
+
+		
+
+		<div v-for="sectionName in SECTION_NAMES" :key="sectionName" v-if="sectionState[sectionName].exist">
+			<!-- Section header -->
+			 <div v-if="sectionName !== 'maxSpend'" 
+				class="heading-toggle" 
+				:class="{ open: !sectionState[sectionName].collapsed }" 
+				@click="toggleSection(sectionName)">
+				<div class="title-block">
+				<div class="caret"></div>
+				<div class="heading-title">{{ prettySectionName(sectionName) }}</div>
+				</div>
+			</div>
+
+			<!-- Section body -->
+			<div class="section-body" v-show="sectionState[sectionName].visible" :ref="sectionName + 'Body'">
+				<div v-for="(item, idx) in getSectionItems(sectionName)" 
+					:key="item.key" 
+					:ref="sectionName + 'Items'" 
+					class="option-wrapper"
+					:class="{ 'is-visible': !sectionState[sectionName].collapsed }"
+					:style="optionStyle(sectionName, idx, getSectionItems(sectionName).length)">
+				<option-pair 
+					:option-name="item.key" 
+					:option="item.option" 
+					:pair="item.pair"
+					:options="options" 
+					:units="units" 
+					:units_full="unitsFull" 
+					:battle_type="battleType"
+					:twilights_fall="twilightsFall">
+				</option-pair>
+				</div>
+			</div>
+			</div>
+
+		
+
+		
+
+		
+		
+
+
+
+
+		<p id="chart-size-selector" class="o-grid center-grid"><span>Chart size:&nbsp;</span>
+			<select class="o-grid__cell c-field block" v-model="canvasSize">
+			<option v-for="(size, key) in CanvasSizes" v-bind:value="key">
+				{{ size.width + '*' + size.height }}
+			</option>
+			</select>
+		</p>
+		</div>
+
+
+
+
+
+
+
+
+
+
+
+	<div id="help" :class="{ collapsed: !showHelp }">
+		<h1>Twilight Imperium IV Edition Battle Calculator</h1>
+		<script>
+			function clearLocalStorage() {
+				localStorage.clear();
+				alert('Local storage has been cleared.');
+				location.reload();
+			}
+		</script>
+		<a href="#" onclick="clearLocalStorage();">Clear Local Storage</a>
+		<p>For more mobile-friendly UI try <a href="mobile/">this</a>.</p>
+				<p>Game aspects <strong>not</strong> taken into account by this calculator:</p>
+		<ul>
+			<li><strong>Nekro Virus</strong> gaining unit upgrade technology during a battle thereby changing participating units' battle value,</li>
+			<li><strong>Nekro Virus</strong> obtaining faction-specific unit upgrades</li>
+			<li><strong>Assault Cannon</strong> handling is questionable. Implemented preference for unit dying order is
+				Destroyer, Carrier, Cruiser, Dreadnought, War Sun, Flagship.
+				In real life depending on the situation I can imagine each of Destroyer, Carrier, Cruiser,
+				and Dreadnought being selected to fall victim to Assault Cannon,
+			</li>
+			<li><strong>Courageous to the End</strong>, <strong>Emergency Repairs</strong> and <strong>Shields Holding</strong> Action Cards.
+				I wasn't able to imagine any obvious way to algorithmically decide when to play these cards during the battle,
+			</li>
+			<li><strong>Yin Brotherhood</strong> <strong>Devotion</strong>, <strong>Indoctrination</strong> racial abilities and <strong>Impulse Core</strong> technology,</li>
+			<li><strong>Mentak</strong> <strong>Salvage Operations</strong> technology,</li>
+			<li><strong>Sardakk N'orr</strong> <strong>Exotrireme II</strong> "kamikaze" ability,</li>
+			<li><strong>Ghosts of Creuss</strong> <strong>Dimensional Splicer</strong> technology,</li>
+			<li><strong>Emirates of Hacan</strong> flagship ability of adding 1 to die result,</li>
+			<li><strong>The Crown of Thanlos</strong> Agenda card.</li>
+		</ul>
+		<p>Some other notes and limitations:</p>
+		<ul>
+			<li>If defender activates <strong>Magen Defense</strong> Grid while <strong>Morale Boost</strong> is selected for the attacker,
+				the card effect is applied to the second round. <strong>Fire Team</strong> is handled the same way,
+			</li>
+			<li>When "<strong>Risk Direct Hit</strong>" is selected, first all damageable units take damage then other units start to die.
+				When "Risk Direct Hit" is not selected, damageable units take hits only after all "cheaper" units are dead (except for upgraded Dreadnoughts which take damage before anything else).
+				This is questionable, but I don't know any better clear-cut approach,
+			</li>
+			<li>When either <strong>Duranium Armor</strong> or <strong>L1Z1X Flagship</strong> or <strong>Letnev Flagship</strong> is active, Space Combats are calculated much slower, as another algorithm is used,</li>
+			<li>As it is implemented at the moment, when <strong>Graviton Laser</strong> is active, PDS might kill a
+				Carrier, because it's "less valuable" than other units. But if there are Fighters in this Carrier, they
+				participate in the battle, though according to the rules, they should have died before the battle,
+			</li>
+			<li>Although you can send multiple <strong>Sardakk</strong> <strong>Flagships</strong> into the battle
+				(in game there is maximum one, obviously), their +1 effects won't be stacked,</li>
+			<li>I consider <strong>Virus</strong> <strong>Flagship</strong> ability (let Ground Forces participate in the Space Combat)
+				interaction with <strong>Assault Cannon</strong> to be timing dependent. Each one of this abilities
+				could kick in first. If the attacker is Virus with Flagship, I count him to enlist Ground Forces into
+				combat first, and then absorb Assault Cannon hit into Ground Forces. If the Virus is the defender, then
+				I consider Assault cannon to activate first. Anyway, such fine-grained details are likely to be overwhelmed
+				by other simplifying assumptions (e.g. fixed units death order),
+			</li>
+			<li>In similar vein if <strong>Mentak</strong> is an attacker, Mentak racial is applied before <strong>Assault Cannon</strong>,
+				otherwise <strong>Assault Cannon</strong> is executed first.
+			</li>
+			<li>When defender has <strong>Magen Defense Grid Ω</strong> and attacker is <strong>Naalu</strong> with Fighters participating in the Ground Combat, Fighters are considered vulnerable to Magen Defence hit.
+				When defender has no defending units there is no Ground Combat and <strong>Magen Defense Grid Ω</strong> is not applied.
+			</li>
+		</ul>
+		</p>
+	</div>
+</div>
+<!----><div id="result-area" :style="{ width: canvasWidth, height: canvasHeight }">
+	<canvas id="chart-area" :width="canvasWidth" :height="canvasHeight"></canvas>
+	<canvas id="chart-area-overlay" :width="canvasWidth" :height="canvasHeight"></canvas>
+	<div id="spinner-container" :style="{ width: canvasWidth, height: canvasHeight }" :class="{ collapsed: !computing }">
+		<div class="loading-spinner"></div>
+	</div>
+</div>
+	<div class="o-container o-container--small">
+		<div class="o-grid center-grid">
+			<a href="mobile/">Go to mobile-friendly version</a>
+		</div>
+	</div>
+</div>
+<script type="text/javascript" src="index.js"></script>
+</body>
+</html>
