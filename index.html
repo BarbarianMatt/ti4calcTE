@@ -35,7 +35,7 @@
 		<div class="o-grid__cell block"><strong>Defender</strong></div>
 	</div>
 	<div class="o-grid center-grid">
-		<select v-model="options.attacker.faction" class="o-grid__cell c-field block">
+		<select v-model="options.attacker.faction" class="o-grid__cell c-field block faction-select">
 			<option v-for="(name, key) in attackerFactionList" :value="key">
 				{{ name }}
 			</option>
@@ -43,7 +43,7 @@
 
 		<div class="spacing"></div>
 
-		<button type="button" class="c-button u-small"
+		<button type="button" class="c-button u-small tf-button"
 					:class="{ 'c-button--brand': twilightsFall,
 								'c-button--ghost-brand': !twilightsFall }"
 					@click="twilightsFall = !twilightsFall">Twilight's Fall
@@ -51,7 +51,7 @@
 
 		<div class="spacing"></div>
 
-		<select v-model="options.defender.faction" class="o-grid__cell c-field block">
+		<select v-model="options.defender.faction" class="o-grid__cell c-field block faction-select">
 			<option v-for="(name, key) in defenderFactionList" :value="key">
 				{{ name }}
 			</option>
@@ -278,8 +278,10 @@
 			<div class="prop-value">
 				<!-- boolean -> checkbox -->
 				<template v-if="isBooleanProp(key)">
-				<input type="checkbox" v-model="selectedUnit[key]" @change="onPropChanged(key, selectedUnit)">
-				</template>
+				<!-- <input type="checkbox" v-model="selectedUnit[key]" @change="onPropChanged(key, selectedUnit)"> -->
+				<input type="checkbox" :checked="selectedUnit[key]" @click="toggleProp(key)">
+			
+			</template>
 
 				<!-- number -> number input with +/- (0..10 default, override for 'number' specifically) -->
 				<template v-else-if="isNumberProp(key)">
@@ -352,7 +354,8 @@
 					:units="units" 
 					:units_full="unitsFull" 
 					:battle_type="battleType"
-					:twilights_fall="twilightsFall">
+					:twilights_fall="twilightsFall"
+					:units_version="unitsVersion">
 				</option-pair>
 				</div>
 			</div>

@@ -27,6 +27,10 @@ body {
 	width: auto;
 }
 
+.faction-select {
+
+}
+
 .center-grid .damaged {
 	flex-basis: 2.5em;
 	flex-shrink: 0;
@@ -34,26 +38,7 @@ body {
 	min-width: 2.5em;
 }
 
-.center-grid .participants {
-	flex-basis: 2.5em;
-	flex-shrink: 0;
-	flex-grow: 0;
-	min-width: 2.5em;
-}
 
-.center-grid .notBombarding {
-	flex-basis: 2.5em;
-	flex-shrink: 0;
-	flex-grow: 0;
-	min-width: 2.5em;
-}
-
-.center-grid .galvanized {
-	flex-basis: 2.5em;
-	flex-shrink: 0;
-	flex-grow: 0;
-	min-width: 2.5em;
-}
 
 .center-grid .block:first-child {
 	text-align: right;
@@ -239,10 +224,15 @@ input[type=number] {
 	padding: .3em;
 }
 
+.tf-button {
+   
+  min-width: 6.8em
+}
+
+
 .c-field {
 	padding: .3em;
 
-	
 }
 
 /* workaround blazecss input groups handling a bit */

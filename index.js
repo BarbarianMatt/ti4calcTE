@@ -52,6 +52,7 @@
 		'technologies',
 		'abilities',
 		'unitUpgrades',
+		'genomes',
 		
 		'faction',
 		'actionCards',
@@ -84,9 +85,10 @@
 	const sectionExistenceRules = {
 		technologies: vm => !vm.twilightsFall, // technologies only exists when twilight's fall is false
 		maxSpend: vm => true,
-		faction: vm => !vm.twilightsFall,
+		faction: vm => true,
 		actionCards: vm => true,
 		leaders: vm => !vm.twilightsFall,
+		genomes: vm => vm.twilightsFall,
 		battlefield: vm => true,
 		promissory: vm => !vm.twilightsFall,
 		abilities: vm => !!vm.twilightsFall,
@@ -376,9 +378,11 @@
 					'galvanized',
 					// 'notInitBombardment',
 					'notParticipating',
-					'notInSystem',
+					'notActiveSystem',
 					'spaceArea',
-					'planet'
+					'planet',
+					'activeSystemAdjacentPlanet',
+					'present',
 					]);
 				
 				if (this.selectedSide === window.BattleSide.attacker && this.options[this.selectedSide].abilities.harrow && this.battleType === window.BattleType.Ground){
@@ -477,8 +481,12 @@
 			incrementSelectedNumber() { this.incrementProp('number'); },
 			decrementSelectedNumber() { this.decrementProp('number'); },
 
-			onPropChanged(/* key, selectedUnit */) {
-				// keep the UI reactive after an arbitrary change
+			
+			toggleProp(key){
+				const updates = {};
+				updates[key] = !this.selectedUnit[key];
+				
+				this.selectedUnit.update(updates)
 				this.$forceUpdate();
 			},
 
@@ -547,15 +555,15 @@
 				const srcUnits = result.units[side];
 
 				
-				// this.currentOptionsOld = result.currentOptionsOld;
+				
 
 				
-				const keysA = new Set(this.currentOptions.map(obj => obj.key && (obj.side === undefined || obj.side === side)));
+				const keys = Object.keys(this.currentOptions[side]);
 
 				// Update options
 				for (const key in srcOptions) {
 					
-					if (key === 'faction' || key === 'units' || !keysA.has(key)) continue; // keep faction, skip units here
+					if (key === 'faction' || key === 'units' || !keys.includes(key)) continue; // keep faction, skip units here
 					if (dstOptions.hasOwnProperty(key)) {
 						dstOptions[key] = srcOptions[key];
 					} else {
@@ -609,19 +617,21 @@
 					
 					persistInput();
 					print(self.unitsCanon);
-					print(self.unitsVersion)
+					print(self.unitsVersion);
 					lastComputed = calculator.computeProbabilities(self);
+
+					// self.currentOptionsOld = structuredClone(self.currentOptions);
 					
 					// this.accumulation.rounds = lastComputed.accumulations.rounds;
 					self.setAccumulation(lastComputed[0]);
 					self.displayDistribution(lastComputed);
 
 					
-
 					self.computing = false;
+					
 				}, 15); // number is magic. but at least the spinner has time to show up before calculation begins
 				
-
+				
 				
 
 				
@@ -987,7 +997,9 @@
 			unitsFull: allHandler(this),
 			
 			
-			
+
+			// battleType : allHandler(this),
+			battleType : updateUnitsFullAll(this),
 			options: allHandler(this),
 			// options: recomputeHandler,
 			canvasSize: function () {
@@ -1020,6 +1032,92 @@
 				}
 			},
 
+
+			'options.attacker.publicize': function (value) {
+				this.options.defender.publicize = value;
+			},
+			'options.defender.publicize': function (value) {
+				this.options.attacker.publicize = value;
+			},
+			'options.attacker.articlesOfWar': function (value) {
+				this.options.defender.articlesOfWar = value;
+			},
+			'options.defender.articlesOfWar': function (value) {
+				this.options.attacker.articlesOfWar = value;
+			},
+			'options.attacker.entropicScar': function (value) {
+				this.options.defender.entropicScar = value;
+			},
+			'options.defender.entropicScar': function (value) {
+				this.options.attacker.entropicScar = value;
+			},
+			'options.attacker.activeBreach': function (value) {
+				this.options.defender.activeBreach = value;
+			},
+			'options.defender.activeBreach': function (value) {
+				this.options.attacker.activeBreach = value;
+			},
+
+			// 'options.attacker.crimsonFlagshipWeaken': function (value) {
+			// 	this.options.defender.crimsonFlagshipWeaken = value;
+			// },
+			// 'options.defender.crimsonFlagshipWeaken': function (value) {
+			// 	this.options.attacker.crimsonFlagshipWeaken = value;
+			// },
+
+			'options.attacker.emergencyRepairsHalf': function (value) {
+				if (this.options.attacker.emergencyRepairsHalf){
+					this.options.attacker.emergencyRepairsAll = false;
+				}
+				
+			},
+			'options.defender.emergencyRepairsHalf': function (value) {
+				if (this.options.defender.emergencyRepairsHalf){
+					this.options.defender.emergencyRepairsAll = false;
+				}
+				
+			},
+
+			'options.attacker.emergencyRepairsAll': function (value) {
+				if (this.options.attacker.emergencyRepairsAll){
+					this.options.attacker.emergencyRepairsHalf = false;
+				}
+				
+			},
+			'options.defender.emergencyRepairsAll': function (value) {
+				if (this.options.defender.emergencyRepairsAll){
+					this.options.defender.emergencyRepairsHalf = false;
+				}
+				
+			},
+
+
+			// 'options.attacker.orangeMechRepairsHalf': function (value) {
+			// 	if (this.options.attacker.emergencyRepairsHalf){
+			// 		this.options.attacker.emergencyRepairsAll = false;
+			// 	}
+				
+			// },
+			// 'options.defender.emergencyRepairsHalf': function (value) {
+			// 	if (this.options.defender.emergencyRepairsHalf){
+			// 		this.options.defender.emergencyRepairsAll = false;
+			// 	}
+				
+			// },
+
+			// 'options.attacker.emergencyRepairsAll': function (value) {
+			// 	if (this.options.attacker.emergencyRepairsAll){
+			// 		this.options.attacker.emergencyRepairsHalf = false;
+			// 	}
+				
+			// },
+			// 'options.defender.emergencyRepairsAll': function (value) {
+			// 	if (this.options.defender.emergencyRepairsAll){
+			// 		this.options.defender.emergencyRepairsHalf = false;
+			// 	}
+				
+			// },
+
 		},
 
 		
@@ -1030,6 +1128,38 @@
 		
 
 		mounted() {
+
+			// this.$watch('options.defender.activeBreach', (newVal) => {
+			// 		if (newVal) {
+			// 			// Loop all unitTypes
+			// 			print('on')
+			// 		} else {
+			// 			print('off')
+			// 		}
+			// 	});
+
+			
+
+			for (const optionGroup of Everything){
+				
+				for (const optionName of Object.keys(optionGroup)){
+					const option = optionGroup[optionName];
+					const string = option.under === undefined ? '' : '.' + option.under;
+					for (const off of option.exclusive){
+						this.$watch( 'options.attacker'+string+'.' + optionName, (value) => {
+							if (value){
+								this.options.attacker[off] = false;
+							}
+						});
+
+						this.$watch( 'options.defender'+string+'.' + optionName, (value) => {
+							if (value){
+								this.options.defender[off] = false;
+							}
+						});
+					}
+				}
+			}
 
 			for (const unitType in UnitType){
 				this.$watch( 'units.attacker.'+unitType+'.count', updateUnitsFull('attacker',unitType, false));
@@ -1044,7 +1174,31 @@
 
 				this.$watch( 'unitsCanon.defender.'+unitType, updateUnitsFull('defender',unitType, true));
 				this.$watch( 'units.defender.'+unitType+'.upgraded', switchUpgrade('defender', unitType));
-				
+
+
+				// this.$watch('options.attacker.upgrade' + unitType, (newVal) => {
+				// 	if (newVal) {
+				// 		// Loop all unitTypes
+				// 		for (const otherUnitType in UnitType) {
+				// 			// Skip the one that was just turned on
+				// 			if (otherUnitType !== unitType) {
+				// 				this.options.attacker['upgrade' + otherUnitType] = false;
+				// 			}
+				// 		}
+				// 	}
+				// });
+
+				// this.$watch('options.defender.upgrade' + unitType, (newVal) => {
+				// 	if (newVal) {
+				// 		// Loop all unitTypes
+				// 		for (const otherUnitType in UnitType) {
+				// 			// Skip the one that was just turned on
+				// 			if (otherUnitType !== unitType) {
+				// 				this.options.defender['upgrade' + otherUnitType] = false;
+				// 			}
+				// 		}
+				// 	}
+				// });
 			}
 			
 
@@ -1075,12 +1229,14 @@
 			for (const unitName in UniqueUnitBuffs){
 				const unitType= UniqueUnitBuffs[unitName].description.split(" ")[0];
 				this.$watch( 'options.attacker.units.' + unitName, updateUnitsFull('attacker',UnitType[unitType], true));
-				this.$watch( 'options.attacker.units.' + unitName, updateUnitsFull('defender',UnitType[unitType], true));
+				this.$watch( 'options.defender.units.' + unitName, updateUnitsFull('defender',UnitType[unitType], true));
 			}
 			
 
 
-			this.$watch( 'battleType', updateUnitsFullAll(this));
+			// this.$watch( 'battleType', updateUnitsFullAll(this));
+			
+			
 
 			// this.$watch('twilightsFall', updateUnitsFullAll(this));
 
@@ -1110,14 +1266,17 @@
 			currentOptions() {
 				const vm = this;
 				// const result = {};
-				result = [];
+				result = {
+					attacker:{},
+					defender: {},
+				};
 				
 
 				// Keep SECTION_NAMES in the same scope as earlier. If absent, fall back to this list:
 				const sections = SECTION_NAMES;
 
 				sections.forEach(sec => {
-				const state = vm.sectionState && vm.sectionState[sec];
+					const state = vm.sectionState && vm.sectionState[sec];
 
 					
 					// only include section if it 'exists' (per your requirement)
@@ -1128,49 +1287,56 @@
 					for (const pair of getter){
 						
 						if (pair.key){
-							const temp = {
-								key: pair.key,
-								option:{
-									default: pair.option.default,
-									under: pair.option.under,
-									inputType: pair.option.inputType
-								},
+							if (pair.cans[0]){
+								
+
+								result.attacker[pair.key] = {
+									option:{
+										default: pair.option.default,
+										under: pair.option.under,
+										inputType: pair.option.inputType
+									},
+									
+								}
 							}
-							if (pair.cans[0] && ! pair.cans[1]){
-								temp.side = 'attacker';
-							}
-							if (!pair.cans[0] && pair.cans[1]){
-								temp.side = 'defender';
+							if (pair.cans[1]){
+								result.defender[pair.key] = {
+									option:{
+										default: pair.option.default,
+										under: pair.option.under,
+										inputType: pair.option.inputType
+									},
+								}
 							}
 							
-							result.push(temp)
+							
 							
 
 						}
-						if (pair.pair){
+						else if (pair.pair){
 							
 							const a = pair.pair.attacker;
 							const d = pair.pair.defender;
 							
 							
-							result.push({
-								key: a.key,
+							result.attacker[a.key]= {
+								
 								option:{
 									default: a.option.default,
 									under: a.option.under,
 									inputType: a.option.inputType
 								},
-								side: 'attacker',
-							});
-							result.push({
-								key: d.key,
+								
+							};
+							result.defender[d.key]={
+								
 								option:{
 									default: d.option.default,
 									under: d.option.under,
 									inputType: d.option.inputType
 								},
-								side: 'defender',
-							});
+								
+							};
 						}
 					}
 					
@@ -1179,12 +1345,142 @@
 				});
 				
 				return result;
-			}, // end currentOptions
+			}, 
 			 
 			
 
 
 			
+			// buildList() {
+			// 	const vm = this;
+
+			// 	return (source = {}) => {
+			// 		if (!source || typeof source !== 'object') return [];
+
+			// 		// Normalize source into an array of objects
+			// 		const sources = Array.isArray(source) ? source : [source];
+
+			// 		const out = [];
+			// 		const unmatched = {
+			// 		attackerOnly: null,
+			// 		defenderOnly: null,
+			// 		attackerFaction: {},
+			// 		defenderFaction: {}
+			// 		};
+
+			// 		sources.forEach(container => {
+			// 		const keys = Object.keys(container.group || container);
+
+			// 		keys.forEach(key => {
+			// 			const item = (container.group || container)[key];
+			// 			if (!item) return;
+
+			// 			// Check availability (now fully wrapped per option)
+			// 			const aCan = typeof item.availableFor === 'function'
+			// 			? item.availableFor('attacker', vm.units?.attacker || {}, vm.unitsFull?.attacker || [], vm.battleType, vm.twilightsFall, vm.unitsVersion, vm, 1)
+			// 			: true;
+			// 			const dCan = typeof item.availableFor === 'function'
+			// 			? item.availableFor('defender', vm.units?.defender || {}, vm.unitsFull?.defender || [], vm.battleType, vm.twilightsFall, vm.unitsVersion, vm, 2)
+			// 			: true;
+
+			// 			if (!aCan && !dCan) return;
+
+						
+
+			// 			// Determine category
+			// 			let isBoth = false;
+			// 			let isAttackerOnly = false;
+			// 			let isDefenderOnly = false;
+			// 			let isAttackerFaction = false;
+			// 			let isDefenderFaction = false;
+
+			// 			if (item.limitedToSide === 'attacker' && aCan) isAttackerOnly = true;
+			// 			else if (item.limitedToSide === 'defender' && dCan) isDefenderOnly = true;
+			// 			else if (item.limitedToFaction) {
+			// 			const fv = item.limitedToFaction;
+			// 			const attackerMatches = Array.isArray(fv)
+			// 				? fv.includes(vm.options.attacker.faction)
+			// 				: fv === vm.options.attacker.faction;
+			// 			const defenderMatches = Array.isArray(fv)
+			// 				? fv.includes(vm.options.defender.faction)
+			// 				: fv === vm.options.defender.faction;
+
+			// 			if (attackerMatches && aCan) isAttackerFaction = true;
+			// 			if (defenderMatches && dCan) isDefenderFaction = true;
+			// 			} else if (aCan && dCan) {
+			// 				isBoth = true;
+			// 			} else if (aCan) {
+			// 				isAttackerOnly = true;
+			// 			} else if (dCan) {
+			// 				isDefenderOnly = true;
+			// 			}
+
+			// 			// Pairing logic
+			// 			if (isAttackerOnly && unmatched.defenderOnly) {
+			// 			const prev = unmatched.defenderOnly;
+			// 			out[prev.outIndex] = {
+			// 				pair: {
+			// 				[BattleSide.attacker]: { key, option: item },
+			// 				[BattleSide.defender]: { key: prev.key, option: prev.item }
+			// 				}
+			// 			};
+			// 			unmatched.defenderOnly = null;
+			// 			return;
+			// 			}
+
+			// 			if (isDefenderOnly && unmatched.attackerOnly) {
+			// 			const prev = unmatched.attackerOnly;
+			// 			out[prev.outIndex] = {
+			// 				pair: {
+			// 				[BattleSide.attacker]: { key: prev.key, option: prev.item },
+			// 				[BattleSide.defender]: { key, option: item }
+			// 				}
+			// 			};
+			// 			unmatched.attackerOnly = null;
+			// 			return;
+			// 			}
+
+			// 			if (isAttackerFaction && unmatched.defenderFaction[vm.options.defender.faction]) {
+			// 			const prev = unmatched.defenderFaction[vm.options.defender.faction];
+			// 			out[prev.outIndex] = {
+			// 				pair: {
+			// 				[BattleSide.attacker]: { key, option: item },
+			// 				[BattleSide.defender]: { key: prev.key, option: prev.item }
+			// 				}
+			// 			};
+			// 			delete unmatched.defenderFaction[vm.options.defender.faction];
+			// 			return;
+			// 			}
+
+			// 			if (isDefenderFaction && unmatched.attackerFaction[vm.options.attacker.faction]) {
+			// 			const prev = unmatched.attackerFaction[vm.options.attacker.faction];
+			// 			out[prev.outIndex] = {
+			// 				pair: {
+			// 				[BattleSide.attacker]: { key: prev.key, option: prev.item },
+			// 				[BattleSide.defender]: { key, option: item }
+			// 				}
+			// 			};
+			// 			delete unmatched.attackerFaction[vm.options.attacker.faction];
+			// 			return;
+			// 			}
+
+			// 			// Push single and track unmatched
+			// 			const outIndex = out.length;
+			// 			out.push({ key, option: item , cans: [aCan, dCan]});
+
+			// 			if (isAttackerOnly && !unmatched.attackerOnly) unmatched.attackerOnly = { outIndex, key, item };
+			// 			if (isDefenderOnly && !unmatched.defenderOnly) unmatched.defenderOnly = { outIndex, key, item };
+			// 			if (isAttackerFaction && !unmatched.attackerFaction[vm.options.attacker.faction])
+			// 			unmatched.attackerFaction[vm.options.attacker.faction] = { outIndex, key, item };
+			// 			if (isDefenderFaction && !unmatched.defenderFaction[vm.options.defender.faction])
+			// 			unmatched.defenderFaction[vm.options.defender.faction] = { outIndex, key, item };
+			// 		});
+			// 		});
+
+			// 		return out;
+			// 	};
+			// },
+
 			buildList() {
 				const vm = this;
 
@@ -1209,17 +1505,18 @@
 						const item = (container.group || container)[key];
 						if (!item) return;
 
+						// If item explicitly requests no pairing, remember it
+						const noPair = item.noPairing === true;
+
 						// Check availability (now fully wrapped per option)
 						const aCan = typeof item.availableFor === 'function'
-						? item.availableFor('attacker', vm.units?.attacker || {}, vm.unitsFull?.attacker || [], vm.battleType, vm.twilightsFall, vm, 1)
+						? item.availableFor('attacker', vm.units?.attacker || {}, vm.unitsFull?.attacker || [], vm.battleType, vm.twilightsFall, vm.unitsVersion, vm, 1)
 						: true;
 						const dCan = typeof item.availableFor === 'function'
-						? item.availableFor('defender', vm.units?.defender || {}, vm.unitsFull?.defender || [], vm.battleType, vm.twilightsFall, vm, 2)
+						? item.availableFor('defender', vm.units?.defender || {}, vm.unitsFull?.defender || [], vm.battleType, vm.twilightsFall, vm.unitsVersion, vm, 2)
 						: true;
 
 						if (!aCan && !dCan) return;
-
-						
 
 						// Determine category
 						let isBoth = false;
@@ -1242,78 +1539,90 @@
 						if (attackerMatches && aCan) isAttackerFaction = true;
 						if (defenderMatches && dCan) isDefenderFaction = true;
 						} else if (aCan && dCan) {
-							isBoth = true;
+						isBoth = true;
 						} else if (aCan) {
-							isAttackerOnly = true;
+						isAttackerOnly = true;
 						} else if (dCan) {
-							isDefenderOnly = true;
+						isDefenderOnly = true;
 						}
 
-						// Pairing logic
+						// Pairing logic — skip pairing if this item or the unmatched candidate has noPairing
 						if (isAttackerOnly && unmatched.defenderOnly) {
 						const prev = unmatched.defenderOnly;
-						out[prev.outIndex] = {
+						if (!noPair && !(prev.item && prev.item.noPairing === true)) {
+							out[prev.outIndex] = {
 							pair: {
-							[BattleSide.attacker]: { key, option: item },
-							[BattleSide.defender]: { key: prev.key, option: prev.item }
+								[BattleSide.attacker]: { key, option: item },
+								[BattleSide.defender]: { key: prev.key, option: prev.item }
 							}
-						};
-						unmatched.defenderOnly = null;
-						return;
+							};
+							unmatched.defenderOnly = null;
+							return;
+						}
 						}
 
 						if (isDefenderOnly && unmatched.attackerOnly) {
 						const prev = unmatched.attackerOnly;
-						out[prev.outIndex] = {
+						if (!noPair && !(prev.item && prev.item.noPairing === true)) {
+							out[prev.outIndex] = {
 							pair: {
-							[BattleSide.attacker]: { key: prev.key, option: prev.item },
-							[BattleSide.defender]: { key, option: item }
+								[BattleSide.attacker]: { key: prev.key, option: prev.item },
+								[BattleSide.defender]: { key, option: item }
 							}
-						};
-						unmatched.attackerOnly = null;
-						return;
+							};
+							unmatched.attackerOnly = null;
+							return;
+						}
 						}
 
 						if (isAttackerFaction && unmatched.defenderFaction[vm.options.defender.faction]) {
 						const prev = unmatched.defenderFaction[vm.options.defender.faction];
-						out[prev.outIndex] = {
+						if (!noPair && !(prev.item && prev.item.noPairing === true)) {
+							out[prev.outIndex] = {
 							pair: {
-							[BattleSide.attacker]: { key, option: item },
-							[BattleSide.defender]: { key: prev.key, option: prev.item }
+								[BattleSide.attacker]: { key, option: item },
+								[BattleSide.defender]: { key: prev.key, option: prev.item }
 							}
-						};
-						delete unmatched.defenderFaction[vm.options.defender.faction];
-						return;
+							};
+							delete unmatched.defenderFaction[vm.options.defender.faction];
+							return;
+						}
 						}
 
 						if (isDefenderFaction && unmatched.attackerFaction[vm.options.attacker.faction]) {
 						const prev = unmatched.attackerFaction[vm.options.attacker.faction];
-						out[prev.outIndex] = {
+						if (!noPair && !(prev.item && prev.item.noPairing === true)) {
+							out[prev.outIndex] = {
 							pair: {
-							[BattleSide.attacker]: { key: prev.key, option: prev.item },
-							[BattleSide.defender]: { key, option: item }
+								[BattleSide.attacker]: { key: prev.key, option: prev.item },
+								[BattleSide.defender]: { key, option: item }
 							}
-						};
-						delete unmatched.attackerFaction[vm.options.attacker.faction];
-						return;
+							};
+							delete unmatched.attackerFaction[vm.options.attacker.faction];
+							return;
+						}
 						}
 
 						// Push single and track unmatched
 						const outIndex = out.length;
-						out.push({ key, option: item , cans: [aCan, dCan]});
+						out.push({ key, option: item, cans: [aCan, dCan] });
 
+						// Only record as unmatched if this item allows pairing
+						if (!noPair) {
 						if (isAttackerOnly && !unmatched.attackerOnly) unmatched.attackerOnly = { outIndex, key, item };
 						if (isDefenderOnly && !unmatched.defenderOnly) unmatched.defenderOnly = { outIndex, key, item };
 						if (isAttackerFaction && !unmatched.attackerFaction[vm.options.attacker.faction])
-						unmatched.attackerFaction[vm.options.attacker.faction] = { outIndex, key, item };
+							unmatched.attackerFaction[vm.options.attacker.faction] = { outIndex, key, item };
 						if (isDefenderFaction && !unmatched.defenderFaction[vm.options.defender.faction])
-						unmatched.defenderFaction[vm.options.defender.faction] = { outIndex, key, item };
+							unmatched.defenderFaction[vm.options.defender.faction] = { outIndex, key, item };
+						}
 					});
 					});
 
 					return out;
 				};
-			},
+				},
+
 
 
 
@@ -1332,6 +1641,9 @@
 
 			leaders() {
 				return this.buildList(Leaders);
+			},
+			genomes() {
+				return this.buildList(Genomes);
 			},
 			battlefield() {
 				return this.buildList(Battlefield);
@@ -1381,12 +1693,12 @@
 		},
 	});
 	Vue.component('left-option', {
-		props: ['optionName', 'option', 'options', 'side', 'units', 'units_full', 'battle_type', 'twilights_fall'],
+		props: ['optionName', 'option', 'options', 'side', 'units', 'units_full', 'battle_type', 'twilights_fall', 'units_version'],
 		template: `
 		<div class="o-grid__cell left-option" 
-			:class="{ hidden: !option.availableFor(side, units[side], units_full[side], battle_type, twilights_fall,  this, 3) }">
+			:class="{ hidden: !option.availableFor(side, units[side], units_full[side], battle_type, twilights_fall, units_version, this, 3) }">
 			<label v-bind:for="bindTarget + optionName" v-bind:title="option.description">
-				{{ option.availableFor(side, units[side], units_full[side], battle_type, twilights_fall,  this, 4) ? option.name() : option.title }}
+				{{ option.availableFor(side, units[side], units_full[side], battle_type, twilights_fall, units_version,  this, 4) ? option.name() : option.title }}
 			</label>
 
 			<!-- Numeric input with increment/decrement -->
@@ -1438,10 +1750,10 @@
 		}
 	});
 	Vue.component('right-option', {
-		props: ['optionName', 'option', 'options', 'side', 'units', 'units_full', 'battle_type', 'twilights_fall'],
+		props: ['optionName', 'option', 'options', 'side', 'units', 'units_full', 'battle_type', 'twilights_fall', 'units_version'],
 		template: `
 		<div class="o-grid__cell right-option" 
-			:class="{ hidden: !option.availableFor(side, units[side], units_full[side], battle_type, twilights_fall,  this, 5) }">
+			:class="{ hidden: !option.availableFor(side, units[side], units_full[side], battle_type, twilights_fall, units_version,  this, 5) }">
 			<div v-if="option.inputType === 'number'" class="c-input-group">
 				<button type="button" class="c-button c-button--ghost-brand count-stepper" title="Decrement"
 						@click="decrement()">-</button>
@@ -1465,7 +1777,7 @@
 			"bindTarget + optionName"
 
 			v-bind:title="option.description">
-				{{ option.availableFor(side, units[side], units_full[side], battle_type, twilights_fall,  this, 6) ? option.name() : option.title }}
+				{{ option.availableFor(side, units[side], units_full[side], battle_type, twilights_fall, units_version, this, 6) ? option.name() : option.title }}
 			</label>
 		</div>
 		`,
@@ -1506,16 +1818,16 @@
 		}
 });
 
-
+	// do not add colon to "side"
 	Vue.component('option-pair', {
-		props: ['optionName', 'option', 'options', 'pair', 'visible', 'units', 'units_full', 'battle_type', 'twilights_fall'],
+		props: ['optionName', 'option', 'options', 'pair', 'visible', 'units', 'units_full', 'battle_type', 'twilights_fall', 'units_version'],
 		template:
 		'<div class="o-grid center-grid" v-if="visible !== false">' +
-		'	<left-option :option-name="option ? optionName : pair.attacker.key" :option="option || pair.attacker.option" :options="options" :units="units" :units_full="units_full" :battle_type="battle_type" side="attacker" :twilights_fall="twilights_fall"></left-option>' +
+		'	<left-option :option-name="option ? optionName : pair.attacker.key" :option="option || pair.attacker.option" :options="options" :units="units" :units_full="units_full" :battle_type="battle_type" side="attacker" :twilights_fall="twilights_fall" :units_version="units_version"></left-option>' +
 		'	<help-mark v-if="option" :option="option" ></help-mark>' +
-		'	<help-mark v-if="pair" :option="pair.attacker.option" :class="{ hidden: !pair.attacker.option.availableFor(\'attacker\', units.attacker, units_full.attacker, battle_type, twilights_fall,  this, 7) }"></help-mark>' +
-		'	<help-mark v-if="pair" :option="pair.defender.option" :class="{ hidden: !pair.defender.option.availableFor(\'defender\', units.defender, units_full.defender, battle_type, twilights_fall,  this, 8) }"></help-mark>' +
-		'	<right-option :option-name="option ? optionName : pair.defender.key" :option="option || pair.defender.option" :options="options" :units="units" :units_full="units_full" :battle_type="battle_type" side="defender" :twilights_fall="twilights_fall"></right-option>' +
+		'	<help-mark v-if="pair" :option="pair.attacker.option" :class="{ hidden: !pair.attacker.option.availableFor(\'attacker\', units.attacker, units_full.attacker, battle_type, twilights_fall, units_version, this, 7) }"></help-mark>' +
+		'	<help-mark v-if="pair" :option="pair.defender.option" :class="{ hidden: !pair.defender.option.availableFor(\'defender\', units.defender, units_full.defender, battle_type, twilights_fall, units_version, this, 8) }"></help-mark>' +
+		'	<right-option :option-name="option ? optionName : pair.defender.key" :option="option || pair.defender.option" :options="options" :units="units" :units_full="units_full" :battle_type="battle_type" side="defender" :twilights_fall="twilights_fall" :units_version="units_version"></right-option>' +
 		'</div>',
 	});
 	Vue.component('help-mark', {
@@ -1594,7 +1906,7 @@
 			
 			for (var unitType in UnitType) {
 				var counter = vm.units[battleSide][unitType];
-				print(vm.twilightsFall);
+				
 				if (!upgradeable(unitType, vm.unitsVersion[battleSide], vm.twilightsFall,vm.options[battleSide].faction)) {
 					counter.upgraded = false;
 				}
@@ -1606,11 +1918,12 @@
 
 			}
 
-			const include = new Set(vm.currentOptions.map(o => o.key));
+			const include = Object.keys(vm.currentOptions[battleSide]);
+			// const include = vm.currentOptions.map(o => o.key));
 
 			for (var group of Everything){
 				for (var optionName in group){
-					if (include.has(optionName)) {
+					if (include.includes(optionName)) {
 
 						const option = group[optionName];
 
@@ -1665,75 +1978,78 @@
 
 				vm = vm.app || vm;
 
+				
 				if (vm.computing) return;
 
+				vm.computing = true;
 				
 				
-				
-				
-				const keysA = new Set(vm.currentOptions.map(obj => obj.key));
-  				const keysB = new Set(vm.currentOptionsOld.map(obj => obj.key));
-				
-				const onlyInA = vm.currentOptions.filter(obj => !keysB.has(obj.key));
-  				const onlyInB = vm.currentOptionsOld.filter(obj => !keysA.has(obj.key));
+				setTimeout(function () {
+
 
 				
-				for (const  pair of onlyInA){
-					
-					
-					const option = pair.option;
-					const key = pair.key;
-					
+					const keysNewA = Object.keys(vm.currentOptions.attacker);
+					const keysOldA = Object.keys(vm.currentOptionsOld.attacker);
 
-					if (pair.side === undefined || pair.side === 'attacker'){
-						var place = option.under !== undefined ? vm.options.attacker[option.under] : vm.options.attacker;
-						place[key] = option.default;
-					}
-					if (pair.side === undefined || pair.side === 'defender'){
-						var place = option.under !== undefined ? vm.options.defender[option.under] : vm.options.defender;
-						place[key] = option.default;
-					}
-
-				}
-
-				for (const  pair of onlyInB){
 					
-					const option = pair.option;
-					const key = pair.key;
 					
+					const onlyInNewA = keysNewA.filter(obj => !keysOldA.includes(obj));
+					const onlyInOldA = keysOldA.filter(obj => !keysNewA.includes(obj));
 
-					if (pair.side === undefined || pair.side === 'attacker'){
-						var place = option.under !== undefined ? vm.options.attacker[option.under] : vm.options.attacker;
+					const keysNewD = Object.keys(vm.currentOptions.defender);
+					const keysOldD = Object.keys(vm.currentOptionsOld.defender);
+
+					
+					const onlyInNewD = keysNewD.filter(obj => !keysOldD.includes(obj));
+					const onlyInOldD = keysOldD.filter(obj => !keysNewD.includes(obj));
+
+				
+
+					oneSide(BattleSide.attacker, onlyInNewA, onlyInOldA);
+					oneSide(BattleSide.defender, onlyInNewD, onlyInOldD);
+
+					function oneSide(battleSide, onlyInNew, onlyInOld){
+						for (const key of onlyInNew){
+							// print(key)
+							const option = vm.currentOptions[battleSide][key].option;
+							var place = option.under !== undefined ? vm.options[battleSide][option.under] : vm.options[battleSide];
+							
+							place[key] = option.default;
+						}
+
+						for (const key of onlyInOld){
+							// print(key)
+							const option = vm.currentOptionsOld[battleSide][key].option;
+							var place = option.under !== undefined ? vm.options[battleSide][option.under] : vm.options[battleSide];
+							place[key] = option.inputType === 'number' ? 0 : false;
+						}
+
 						
-						place[key] = option.inputType === 'number' ? 0 : false;
 					}
-					if (pair.side === undefined || pair.side === 'defender'){
-						var place = option.under !== undefined ? vm.options.defender[option.under] : vm.options.defender;
-						place[key] = option.inputType === 'number' ? 0 : false;
-					}
+					
+					vm.breakdown =  vm.unitsFull;
+					
+				
+					
 
-				}
+					
+					vm.recompute();
+					
+					vm.currentOptionsOld = structuredClone(vm.currentOptions);
 
-				
+					vm.handling= false;
 
-				
-
-				
-				
-				vm.breakdown =  vm.unitsFull;
-				
-				
-				
-				vm.currentOptionsOld = structuredClone(vm.currentOptions);
+				}, 15);
 
 				
-				vm.recompute();
 			},
 			deep: true,
 			
 		}
-		// return recomputeHandler.handler;
+		
 	}
+
+	
 
 	function switchUpgrade(battleSide, unitType){
 		return {
@@ -1763,6 +2079,7 @@
 
 					
 					for (const unitNameTemp in space){
+						
 						if (UniqueUnits[unitNameTemp].type === unitType && unitNameTemp !== unitName ){
 							this.options[battleSide].units[unitNameTemp] = false;
 						}
@@ -1835,6 +2152,8 @@
 		return {
 
 			handler: function () {
+
+				vm = vm.app || vm;
 				
 				for (const battleSide of ['attacker', 'defender']){
 					
@@ -1916,7 +2235,10 @@
 			canvasSize: 0,
 		};
 
-		result.currentOptionsOld = [];
+		result.currentOptionsOld = {
+			attacker:{},
+			defender:{}
+		};
 		
 		// SECTION_NAMES
 
@@ -1943,22 +2265,31 @@
 					result.options.attacker[option.under][optionName] = group[optionName].default;
 					result.options.defender[option.under][optionName] = group[optionName].default;
 				}
-				
-				result.currentOptionsOld.push({
-					key: optionName,
-					option:{
-						default: option.default,
-						under: option.under,
-						inputType: option.inputType
-					},
-					side: option.limitedToSide,
-				})
+				// if ((option.limitedToSide === undefined || option.limitedToSide === BattleSide.attacker) && ){
+				// 	result.currentOptionsOld.attacker[optionName]={
+				// 		option:{
+				// 			default: option.default,
+				// 			under: option.under,
+				// 			inputType: option.inputType
+				// 		}
+				// 	}
+				// }
+				// if (option.limitedToSide === undefined || option.limitedToSide === BattleSide.defender){
+				// 	result.currentOptionsOld.defender[optionName]={
+				// 		option:{
+				// 			default: option.default,
+				// 			under: option.under,
+				// 			inputType: option.inputType
+				// 		}
+				// 	}
+				// }
 				
 			}
 		}
 
 		
-		
+		result.options.attacker.maxSpend= 0;
+		result.options.defender.maxSpend= 0;
 		
 		
 		
@@ -2045,6 +2376,7 @@
 		if (!resultString) return null;
 		var result = JSON.parse(resultString);
 		
+		
 		for (var unitType in UnitType) {
 			// because previous published version didn't have already damaged units, persisted input might miss these fields
 			
@@ -2053,6 +2385,7 @@
 
 
 		}
+		
 		var temp = []
 		for (const unit of result.unitsFull.attacker){
 			
@@ -2062,7 +2395,7 @@
 			// temp.push(unit.clone());
 		}
 		result.unitsFull.attacker = temp;
-
+		
 		var tempD = []
 		for (const unit of result.unitsFull.defender){
 			const newUnit = new window.UnitInfo(unit.type, unit);
@@ -2089,7 +2422,7 @@
 			
 		}
 		
-
+		
 		
 
 		// setFactionDefaults('attacker', result.options.attacker.faction, result);

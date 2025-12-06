@@ -34,7 +34,7 @@
 			};
 
 
-		const timingsOrder = ['beforeCombat','spaceCannonOffense', 'bombardment', 'spaceCannonDefense', 'duringCombat', 'startOfCombat',  'barrage', 'announceRetreat',  'combatRolls', 'retreat', 'endOfRound', 'cleanup'];
+		const timingsOrder = ['beforeEverything','spaceCannonOffense', 'bombardment', 'spaceCannonDefense', 'beforeCombat','duringCombat', 'startOfCombat',  'barrage', 'announceRetreat',  'combatRolls', 'retreat', 'endOfRound', 'cleanup'];
 
 		const unitKeys = Object.keys(new root.UnitInfo(UnitType.WarSun, {})).slice();
 		unitKeys.sort();
@@ -204,32 +204,7 @@
 			}
 		}
 
-		// function printCache() {
-		// 	print("=== Variants By ShortType ===");
-		// 	cache.variantsByShortType.forEach((variantMap, shortType) => {
-		// 		print(`ShortType: ${shortType}`);
-		// 		variantMap.forEach((variantIndex, sig) => {
-		// 			print(`  Sig: ${sig} -> Index: ${variantIndex}`);
-		// 		});
-		// 	});
-
-		// 	print("\n=== Next Variant Index ===");
-		// 	cache.nextVariantIndex.forEach((nextIndex, shortType) => {
-		// 		print(`ShortType: ${shortType} -> NextIndex: ${nextIndex}`);
-		// 	});
-
-		// 	print("\n=== Label Transformations ===");
-		// 	cache.labelTransformations.forEach((oldLabelMap, shortType) => {
-		// 		print(`ShortType: ${shortType}`);
-		// 		oldLabelMap.forEach((changeMap, oldLabel) => {
-		// 			print(`  OldLabel: ${oldLabel}`);
-		// 			changeMap.forEach((newLabel, changeSig) => {
-		// 				print(changeSig);
-		// 				print(`    ChangeSig: ${changeSig} -> NewLabel: ${newLabel}`);
-		// 			});
-		// 		});
-		// 	});
-		// }
+		
 
 		
 		function printCache() {
@@ -292,7 +267,7 @@
     //     });
     // }
 
-    // // ===== labelTransformations =====
+    // ===== labelTransformations =====
     // if (cache.labelTransformations) {
     //     console.log('=== cache.labelTransformations ===');
     //     cache.labelTransformations.forEach((perShort, shortType) => {
@@ -380,7 +355,7 @@
 
 		return {
 			computeProbabilities: computeProbabilities,
-			fleetTransitionsVector: fleetTransitionsVector,
+			// fleetTransitionsVector: fleetTransitionsVector,
 		};
 
 		/** Compute survival probabilities of each subset of attacker and defender */
@@ -391,6 +366,8 @@
 			options.defender.unitCounters = input.units.defender;
 			options.attacker.unitsCanon = input.unitsCanon.attacker;
 			options.defender.unitsCanon = input.unitsCanon.defender;
+			options.attacker.unitsVersion = input.unitsVersion.attacker;
+			options.defender.unitsVersion = input.unitsVersion.defender;
 
 
 
@@ -449,6 +426,10 @@
 			
 		}
 
+		function unitAbility(throwType){
+			return throwType === game.ThrowType.Barrage || throwType === game.ThrowType.Bombardment || throwType === game.ThrowType.SpaceCannon;
+		}
+
 		function nonFighterShip(unit){
 			return unit.typeShip && unit.type !== game.UnitType.Fighter;
 		}
@@ -472,7 +453,8 @@
 
 			// Return the predicate function
 			return function hardPredicate(unit) {
-				return (ghostTypes.has(unit.type) || ((!unit.sustainDamage || unit.lostSustain) && nonFighterShip(unit) && thisSideOptions.voidShielding)) && oldHardPredicate(unit);
+				const oldHard = unit.isDamageGhost && !unit.alreadySustained && unit.damageCorporeal ? oldHardPredicate(unit.damageCorporeal) && oldHardPredicate(unit) : oldHardPredicate(unit);
+				return (ghostTypes.has(unit.type) || ((!unit.sustainDamage || unit.lostSustain) && nonFighterShip(unit) && thisSideOptions.voidShielding)) && oldHard;
 			};
 		}
 
@@ -557,8 +539,31 @@
 
 			assignPointers(attackerFleet, newFleetA, indexByUnitA);
 			assignPointers(defenderFleet, newFleetD, indexByUnitD);
+			
+			assignFlags(flags.attacker, newFlags.attacker);
+			assignFlags(flags.defender, newFlags.defender)
 
+			
 			return [newFleetA, newFleetD, newFlags];
+
+			function assignFlags(oldFlgs, newFlgs){
+				for (let i = 0; i < newFlgs.length; i++){
+					const newFlag = newFlgs[i];
+					const flag = oldFlgs[i];
+					
+					if (flag.unitPointer){
+						if (flag.unitSide === game.BattleSide.attacker){
+							const idx = indexByUnitA.get(flag.unitPointer);
+							if (idx !== -1)
+								newFlag.unitPointer = newFleetA[idx]
+						} else {
+							const idx = indexByUnitD.get(flag.unitPointer);
+							if (idx !== -1)
+								newFlag.unitPointer = newFleetD[idx]
+						}
+					}
+				}
+			}
 
 			function assignPointers(fleet, newFleet, indexByUnit){
 				for (let i = 0; i < fleet.length; i++) {
@@ -587,13 +592,13 @@
 					if (indicesA.length > 0){
 						for (var idxFlag of indicesA){
 							newUnit.flagPointers.push(newFlags.attacker[idxFlag]);
-							newFlags.attacker[idxFlag].unitPointer = newUnit;
+							// newFlags.attacker[idxFlag].unitPointer = newUnit;
 						}
 					}
 					if (indicesD.length > 0){
 						for (var idxFlag of indicesD){
 							newUnit.flagPointers.push(newFlags.defender[idxFlag]);
-							newFlags.defender[idxFlag].unitPointer = newUnit;
+							// newFlags.defender[idxFlag].unitPointer = newUnit;
 						}
 					}
 				}
@@ -632,28 +637,33 @@
 			return false;
 		}
 
-		function applyContinuousEffectsOnUnits(units, thisSideFlags,  battleSide, battleType, timing, thisSideOptions){
+		
+
+		function applyContinuousEffectsOnUnits(units, battleSide, battleType,  state, accumulation, options){
 
 			
 
 			var effects = []
-			for (const flag of thisSideFlags){
+			for (const flag of state.flags[battleSide]){
+				
 				if (flag.newUnitEffect !== undefined){
-					effects.push(flag.newUnitEffect)
+					effects.push(flag)
 				}
 			}
 			for (const passive of passiveContinuousAbilities){
 				if 	(
 					passive.newUnitEffect !== undefined &&
-					checkTiming(timing, passive.timing) && 
-					passive.condition(thisSideOptions) ) {
-						effects.push(passive.newUnitEffect)
+					checkTiming(state.timing, passive.timing) && 
+					passive.condition(battleSide, battleType,  state, accumulation, options) ) {
+						effects.push(passive)
 					}
 			}
 			
 
 
 			effects = effects.sort((a,b) => b.priority - a.priority);
+			
+			
 
 			
 
@@ -661,7 +671,8 @@
 				const unit = units[i];
 				
 				for (const effect of effects){
-					if (!effect(unit)){
+					
+					if (!effect.newUnitEffect(unit, battleSide, battleType,  state, accumulation, options)){
 						units.splice(i,1);
 						break;
 					}
@@ -716,13 +727,20 @@
 						baseStats.abilities = unit.abilities.filter(obj => !removeAbilities.includes(obj));
 					}
 
-					
+					// print(unit)
 
 					baseStats.abilities.push(...addAbilities);
 
+					if (options[battleSide].copy.titansPDSIICopy && unit.type === game.UnitType.PDS && unit.invisible && unit.immune && unit.passive){
+						baseStats.invisible = false;
+						baseStats.immune = false;
+						baseStats.passive = false;
+						
+					}
 					
-					// print(baseStats);
 					unit.update(baseStats);
+
+					
 
 					
 
@@ -760,6 +778,9 @@
 					
 				}
 			}
+		
+		
+			game.fillOutFleet(fleet, battleType, options[battleSide]);
 
 			
 
@@ -769,7 +790,10 @@
 
 		function addUnit(fleet, unit, battleSide, battleType,  state, accumulation, options, sort = true){
 
-			var newUnit = applyContinuousEffectsOnUnits([unit], state.flags[battleSide],  battleSide, battleType, state.timing, options[battleSide]);
+			var newUnit = applyContinuousEffectsOnUnits([unit], battleSide, battleType,  state, accumulation, options);
+
+
+
 			if (newUnit.length === 0){ return false;}
 
 			newUnit = newUnit[0];
@@ -959,56 +983,58 @@
 			return arrCopy
 		}
 
-		// function resolveSingleDead(state, deadUnit, battleSide, battleType, accumulation, options){
-		// 	var otherSide = game.BattleSide.opponent(battleSide);
-		// 	var abilitySuggestions=[];
-		// 	for (const flagPointer of deadUnit.flagPointers){
-		// 		const index = state.flags[flagPointer.side].indexOf(flagPointer);
-				
-		// 		if (index !== -1) {
-		// 			state.flags[flagPointer.side].splice(index,1);
-					
+		
 
-		// 			if (flagPointer.newUnitEffect !== undefined){
-		// 				const fleet = state[flagPointer.side];
-						
-		// 				applyContinuousEffectsOnUnits(fleet, state.flags[flagPointer.side], flagPointer.side, battleType, state.timing, options[flagPointer.side]);
-
-		// 				game.fillOutFleet(fleet, battleType, options[flagPointer.side]);
-		// 			}
-
-		// 			const ability = continuousUnitAbilities[flagPointer.name];
-		// 			if (ability && ability.terminate !== undefined){
-						
-		// 				abilitySuggestions.push({
-		// 					condition: ability.condition,
-		// 					deathEffect: ability.terminate,
-		// 					unit: deadUnit,
-		// 					priority: typeof ability.priority === 'function' ?  ability.priority(deadUnit) : ability.priority,
-		// 				})
-		// 			}
-		// 		}
-		// 	}
-
-		// 	for (const ability of deathEffects){
-				
-		// 		if (ability.condition(deadUnit, battleSide, battleType,  state, accumulation, options) && checkTiming(state.timing, ability.timing)){
-		// 			abilitySuggestions.push({
-		// 				condition: ability.condition,
-		// 				deathEffect: ability.destroyEffect,
-		// 				unit: deadUnit,
-		// 				priority: typeof ability.priority === 'function' ?  ability.priority(deadUnit) : ability.priority,
-		// 			})
-		// 		}
-		// 	}
-
-		// 	return abilitySuggestions;
-		// }
-
-		function resolveDead2(state, deadUnitsAttacker, deadUnitsDefender, accumulation, battleType, options, startKey=false){
+		function resolveDead2(state, deadUnitsAttacker, deadUnitsDefender, accumulation, battleType, options, {
+			startKey=false,
+			noDivinity = false,
+		} = {}){
 
 			var attackerSort = state.attacker.some(obj => obj.leaveEarly);
 			var defenderSort = state.defender.some(obj => obj.leaveEarly);
+
+			if (state.resources.attacker.divinity?.total > 0 && !noDivinity){
+
+				
+				game.fleetSort(deadUnitsAttacker, battleType, options.attacker);
+
+				var count = 0
+				for (var i = 0; i < deadUnitsAttacker.length && count < state.resources.attacker.divinity.total; i++){
+					const unit = deadUnitsAttacker[i];
+					if (!unit.isDamageGhost){
+						state.attacker.push(deadUnitsAttacker.splice(i,1)[0]);
+						i--;
+						count++;
+					}
+
+				}
+				
+				attackerSort = true;
+				state.resources.attacker.divinity.total -= count;
+			}
+
+			if (state.resources.defender.divinity?.total > 0 && !noDivinity){
+
+				
+				game.fleetSort(deadUnitsDefender, battleType, options.defender);
+				
+				var count = 0
+				for (var i = 0; i < deadUnitsDefender.length && count < state.resources.defender.divinity.total; i++){
+					const unit = deadUnitsDefender[i];
+					if (!unit.isDamageGhost){
+						state.defender.push(deadUnitsDefender.splice(i,1)[0]);
+						i--;
+						count++;
+					}
+
+				}
+				
+				defenderSort = true;
+				state.resources.defender.divinity.total -= count;
+			}
+			
+
+
 			if (deadUnitsAttacker.length > 0){
 				for (var i = state.attacker.length-1; i>=0; i--){
 					const unit = state.attacker[i];
@@ -1017,9 +1043,10 @@
 					}
 				}
 
-				if (attackerSort){
-					game.fleetSort(state.attacker, battleType, options.attacker);
-				}
+				
+			}
+			if (attackerSort){
+				game.fleetSort(state.attacker, battleType, options.attacker);
 			}
 			if (deadUnitsDefender.length > 0){
 
@@ -1029,13 +1056,13 @@
 						deadUnitsDefender.push(state.defender.splice(i,1)[0]);
 					}
 				}
-				if (defenderSort){
-					game.fleetSort(state.defender, battleType, options.defender);
-				}
+				
+			}
+			if (defenderSort){
+				game.fleetSort(state.defender, battleType, options.defender);
 			}
 			
-			// var attackerAbilities = makeDeathAbilities(deadUnitsAttacker, deadUnitsDefender, game.BattleSide.attacker, state, accumulation);
-			// var defenderAbilities = makeDeathAbilities(deadUnitsDefender, deadUnitsAttacker, game.BattleSide.defender, state, accumulation);
+			
 
 			var [attackerAbilities, defenderAbilities] = getDeathAbilities(deadUnitsAttacker, deadUnitsDefender, state, accumulation);
 
@@ -1072,16 +1099,22 @@
 			})
 
 			for (const unit of deadUnitsAttacker){
-				stack[0].attacker.deadSim.push({
-					isDamageGhost: unit.isDamageGhost,
-					type: unit.type,
-				})
+				// stack[0].attacker.deadSim.push({
+				// 	isDamageGhost: unit.isDamageGhost,
+				// 	type: unit.type,
+				// 	label: unit.label,
+				// 	abilities: unit.abilities,
+				// })
+				stack[0].attacker.deadSim.push(unit);
 			}
 			for (const unit of deadUnitsDefender){
-				stack[0].defender.deadSim.push({
-					isDamageGhost: unit.isDamageGhost,
-					type: unit.type,
-				})
+				// stack[0].defender.deadSim.push({
+				// 	isDamageGhost: unit.isDamageGhost,
+				// 	type: unit.type,
+				// 	label: unit.label,
+				// 	abilities: unit.abilities,
+				// })
+				stack[0].defender.deadSim.push(unit);
 			}
 			
 			while (stack.length){
@@ -1184,20 +1217,26 @@
 							if (attackerDead.length > 0){
 								for (const unit of attackerDead){
 								
-									attackerDeadSim.push({
-										isDamageGhost: unit.isDamageGhost,
-										type: unit.type,
-									})
+									// attackerDeadSim.push({
+									// 	isDamageGhost: unit.isDamageGhost,
+									// 	type: unit.type,
+									// 	label: unit.label,
+									// 	abilities: unit.abilities,
+									// })
+									attackerDeadSim.push(unit)
 
 									if (unit.ghostCorporeal && newStat[i].attacker.includes(unit.ghostCorporeal)){
 										const index = newStat[i].attacker.indexOf(unit.ghostCorporeal);
 										if (index !== -1) {
 											attackerDead.push(newStat[i].attacker.splice(index, 1)[0]);
 
-											attackerDeadSim.push({
-												isDamageGhost: unit.ghostCorporeal.isDamageGhost,
-												type: unit.ghostCorporeal.type,
-											})
+											// attackerDeadSim.push({
+											// 	isDamageGhost: unit.ghostCorporeal.isDamageGhost,
+											// 	type: unit.ghostCorporeal.type,
+											// 	label: unit.label,
+											// abilities: unit.abilities,
+											// })
+											attackerDeadSim.push(unit)
 										}
 									}
 								}
@@ -1209,20 +1248,26 @@
 							if (defenderDead.length > 0){
 								for (const unit of defenderDead){
 								
-									defenderDeadSim.push({
-										isDamageGhost: unit.isDamageGhost,
-										type: unit.type,
-									})
+									// defenderDeadSim.push({
+									// 	isDamageGhost: unit.isDamageGhost,
+									// 	type: unit.type,
+									// 	label: unit.label,
+									// 	abilities: unit.abilities,
+									// })
+									defenderDeadSim.push(unit);
 
 									if (unit.ghostCorporeal && newStat[i].defender.includes(unit.ghostCorporeal)){
 										const index = newStat[i].defender.indexOf(unit.ghostCorporeal);
 										if (index !== -1) {
 											defenderDead.push(newStat[i].defender.splice(index, 1)[0]);
 
-											defenderDeadSim.push({
-												isDamageGhost: unit.ghostCorporeal.isDamageGhost,
-												type: unit.ghostCorporeal.type,
-											})
+											// defenderDeadSim.push({
+											// 	isDamageGhost: unit.ghostCorporeal.isDamageGhost,
+											// 	type: unit.ghostCorporeal.type,
+											// 	label: unit.label,
+											// 	abilities: unit.abilities,
+											// })
+											defenderDeadSim.push(unit)
 										}
 									}
 								}
@@ -1294,6 +1339,7 @@
 				return [attackerAbilities, defenderAbilities];
 
 				function oneSide(deadUnit, thisSide, otherSide, thisSideAbilities, otherSideAbilities){
+					
 					for (const flagPointer of deadUnit.flagPointers){
 						const index = state.flags[flagPointer.side].indexOf(flagPointer);
 						
@@ -1301,10 +1347,11 @@
 							state.flags[flagPointer.side].splice(index,1);
 
 							const ability = continuousUnitAbilities[flagPointer.name];
+							
 							if (ability && ability.terminate !== undefined){
 								
 								thisSideAbilities.push({
-									condition: ability.condition,
+									condition: obj => true,
 									deathEffect: ability.terminate,
 									unit: deadUnit,
 									unitSide: thisSide,
@@ -1313,35 +1360,32 @@
 							}
 							
 
-							// if (flagPointer.newUnitEffect !== undefined){
-							// 	const fleet = state[flagPointer.side];
-								
-							// 	applyContinuousEffectsOnUnits(fleet, state.flags[flagPointer.side], flagPointer.side, battleType, state.timing, options[flagPointer.side]);
-
-							// 	game.fillOutFleet(fleet, battleType, options[flagPointer.side]);
-							// }
+							
 
 							
 						}
 					}
 					for (const ability of deathEffects){
-						if (ability.condition(deadUnit, thisSide, thisSide,  battleType,  stateTemp, accumulationTemp, options) && checkTiming(stateTemp.timing, ability.timing)){
-							thisSideAbilities.push({
-								condition: ability.condition,
-								deathEffect: ability.destroyEffect,
-								unit: deadUnit,
-								unitSide: thisSide,
-								priority: typeof ability.priority === 'function' ?  ability.priority(deadUnit) : ability.priority,
-							})
-						} else if (ability.condition(deadUnit, thisSide, otherSide, battleType,  stateTemp, accumulationTemp, options) && checkTiming(stateTemp.timing, ability.timing)){
-							otherSideAbilities.push({
-								condition: ability.condition,
-								deathEffect: ability.destroyEffect,
-								unit: deadUnit,
-								unitSide: thisSide,
-								priority: typeof ability.priority === 'function' ?  ability.priority(deadUnit) : ability.priority,
-							})
-						} 
+						if (checkTiming(stateTemp.timing, ability.timing)){
+							if (ability.condition(deadUnit, thisSide, thisSide,  battleType,  stateTemp, accumulationTemp, options)){
+								thisSideAbilities.push({
+									condition: ability.condition,
+									deathEffect: ability.destroyEffect,
+									unit: deadUnit,
+									unitSide: thisSide,
+									priority: typeof ability.priority === 'function' ?  ability.priority(deadUnit) : ability.priority,
+								})
+							}
+							if (ability.condition(deadUnit, thisSide, otherSide, battleType,  stateTemp, accumulationTemp, options)){
+								otherSideAbilities.push({
+									condition: ability.condition,
+									deathEffect: ability.destroyEffect,
+									unit: deadUnit,
+									unitSide: thisSide,
+									priority: typeof ability.priority === 'function' ?  ability.priority(deadUnit) : ability.priority,
+								})
+							}
+						}
 					}
 				}
 			}
@@ -1382,96 +1426,13 @@
 
 
 
-		function resolveDead(deadUnitsAttacker, deadUnitsDefender, attackerFleet, defenderFleet, battleType, flags, timing, options){
+		
 
+		function assignHitsStep(attackerFleet, attackerHits, attackerHitsSpecial, defenderFleet, defenderHits, defenderHitsSpecial, attackerHardPredicate, attackerSoftPredicate, attackerSpecialSoftPredicate, defenderHardPredicate, defenderSoftPredicate, defenderSpecialSoftPredicate, battleType,  state, accumulation, options, passmode=false){
 
 		
 
-
-
-			// var attackerPass = false;
-			// var defenderPass = false;
-
-			// state.turn = state.turn || 'attacker';
-			// var loops = 0
-
-
-			// while (!(attackerPass && defenderPass) && loops<10000){
-			// 	loops++;
-			// 	if (state.turn === 'attacker'){
-			// }
-
-
-
-
-
-
-
-
-
-
-
-			for (var i = 0; i < deadUnitsAttacker.length; i++) {
-				const deadUnit = deadUnitsAttacker[i];
-
-				
-				
-				for (const flagPointer of deadUnit.flagPointers){
-					const index = flags[flagPointer.side].indexOf(flagPointer);
-					const flag = flags[flagPointer.side][index];
-					if (index !== -1) {
-						flags[flagPointer.side].splice(index,1);
-						const ability = continuousUnitAbilities[flagPointer.name];
-						
-						if (ability && ability.deathEffect !== undefined){
-							ability.deathEffect(deadUnit, attackerFleet, defenderFleet, battleType, options.attacker, options.defender, flags.attacker, flags.defender);
-						}
-						if (flag.newUnitEffect !== undefined){
-							const fleet = flag.side === game.BattleSide.attacker ? attackerFleet  : defenderFleet;
-							
-							applyContinuousEffectsOnUnits(fleet, flags[flag.side], flag.side, battleType, timing, options[flag.side]);
-
-							game.fillOutFleet(fleet, battleType, options[flag.side]);
-						}
-
-					}
-				}
-				deadUnit.flagPointers=[];
-			}
-
-			for (var i = 0; i < deadUnitsDefender.length; i++) {
-				const deadUnit = deadUnitsDefender[i];
-				
-				for (const flagPointer of deadUnit.flagPointers){
-					const index = flags[flagPointer.side].indexOf(flagPointer);
-					const flag = flags[flagPointer.side][index];
-					
-					if (index !== -1) {
-						flags[flagPointer.side].splice(index,1);
-						const ability = continuousUnitAbilities[flagPointer.name];
-						if (ability && ability.deathEffect !== undefined){
-							ability.deathEffect(deadUnit, defenderFleet, attackerFleet, battleType, options.defender, options.attacker, flags.defender, flags.attacker);
-						}
-
-						if (flag.newUnitEffect !== undefined){
-							const fleet = flag.side === game.BattleSide.attacker ? attackerFleet : defenderFleet;
-							applyContinuousEffectsOnUnits(fleet, flags[flag.side], flag.side, battleType, timing, options[flag.side]);
-
-							game.fillOutFleet(fleet, battleType, options[flag.side]);
-
-							
-						}
-					}
-				}
-				deadUnit.flagPointers=[];
-				
-			}
-
-		}
-
-		function assignHitsStep(attackerFleet, attackerHits, attackerHitsSpecial, defenderFleet, defenderHits, defenderHitsSpecial, attackerHardPredicate, attackerSoftPredicate, attackerSpecialSoftPredicate, defenderHardPredicate, defenderSoftPredicate, defenderSpecialSoftPredicate, resources, timing, options, accumulation, passmode=false){
-
-			const isCombat = checkTiming(timing, 'duringCombat_');
+			const isCombat = checkTiming(state.timing, 'duringCombat_');
 
 			attackerHardPredicate = attackerHardPredicate || function (unit) {
 				return true;
@@ -1496,10 +1457,11 @@
 				while (!(attackerPass && defenderPass) && loops<10000){
 					loops++;
 					if (defenderHitsSpecial > 0){
-						const [attackerUnit, attackerIndex] = findUnit(attackerFleet, attackerHardPredicate, nonFighterShip);
+						const [attackerUnit, attackerIndex] = findUnit(attackerFleet, attackerHardPredicate, attackerSoftPredicate, attackerSpecialSoftPredicate);
 						if (attackerUnit){
 							
-							const output = hit(attackerUnit, attackerIndex, attackerFleet, attackerDeadUnits, resources.attacker, resources.defender, options.attacker, accumulation.attacker);
+							const output = hit(attackerUnit, attackerIndex, attackerFleet, attackerDeadUnits, game.BattleSide.attacker, battleType, state, accumulation, options)
+							
 							defenderHitsSpecial -= output[0];
 							attackerHits += output[1];
 
@@ -1510,10 +1472,10 @@
 						}
 					} else {
 					if (defenderHits > 0){
-						const [attackerUnit, attackerIndex] = findUnit(attackerFleet, attackerHardPredicate, attackerSoftPredicate);
+						const [attackerUnit, attackerIndex] = findUnit(attackerFleet, attackerHardPredicate, attackerSoftPredicate, attackerSpecialSoftPredicate);
 						if (attackerUnit){
 							
-							const output = hit(attackerUnit, attackerIndex, attackerFleet, attackerDeadUnits, resources.attacker, resources.defender, options.attacker, accumulation.attacker);
+							const output = hit(attackerUnit, attackerIndex, attackerFleet, attackerDeadUnits, game.BattleSide.attacker, battleType, state, accumulation, options)
 							defenderHits -= output[0];
 							attackerHits += output[1];
 
@@ -1530,10 +1492,10 @@
 					if (attackerPass && defenderPass) { break;}
 
 					if (attackerHitsSpecial > 0){
-						const [defenderUnit, defenderIndex] = findUnit(defenderFleet, defenderHardPredicate, nonFighterShip);
+						const [defenderUnit, defenderIndex] = findUnit(defenderFleet, defenderHardPredicate, defenderSoftPredicate, defenderSpecialSoftPredicate);
 						if (defenderUnit){
 							
-							const output = hit(defenderUnit, defenderIndex, defenderFleet, defenderDeadUnits, resources.defender, resources.attacker, options.defender, accumulation.defender);
+							const output = hit(defenderUnit, defenderIndex, defenderFleet, defenderDeadUnits, game.BattleSide.defender, battleType, state, accumulation, options)
 							attackerHitsSpecial -= output[0];
 							defenderHits += output[1];
 
@@ -1544,10 +1506,10 @@
 						}
 					} else {
 					if (attackerHits > 0){
-						const [defenderUnit, defenderIndex] = findUnit(defenderFleet, defenderHardPredicate, defenderSoftPredicate);
+						const [defenderUnit, defenderIndex] = findUnit(defenderFleet, defenderHardPredicate, defenderSoftPredicate, defenderSpecialSoftPredicate);
 						if (defenderUnit){
 							
-							const output = hit(defenderUnit, defenderIndex, defenderFleet, defenderDeadUnits, resources.defender, resources.attacker, options.defender, accumulation.defender);
+							const output = hit(defenderUnit, defenderIndex, defenderFleet, defenderDeadUnits, game.BattleSide.defender, battleType, state, accumulation, options)
 							attackerHits -= output[0];
 							defenderHits += output[1];
 
@@ -1563,50 +1525,6 @@
 					
 				}
 
-				// var attackerPass = false;
-				// var defenderPass = false;
-
-				
-				// while (!(attackerPass && defenderPass) && loops<10000){
-				// 	loops++;
-					
-				// 	if (defenderHits > 0){
-				// 		const [attackerUnit, attackerIndex] = findUnit(attackerFleet, attackerHardPredicate, attackerSoftPredicate);
-				// 		if (attackerUnit){
-							
-				// 			const output = hit(attackerUnit, attackerIndex, attackerFleet, attackerDeadUnits, resources.attacker, resources.defender, options.attacker, accumulation.attacker);
-				// 			defenderHits -= output[0];
-				// 			attackerHits += output[1];
-
-				// 			attackerPass=false;
-				// 			defenderPass=false;
-				// 		} else {
-				// 			attackerPass = true;
-				// 		}
-				// 	} else {
-				// 		attackerPass = true;
-				// 	}
-
-				// 	if (attackerPass && defenderPass) { break;}
-
-				// 	if (attackerHits > 0){
-				// 		const [defenderUnit, defenderIndex] = findUnit(defenderFleet, defenderHardPredicate, defenderSoftPredicate);
-				// 		if (defenderUnit){
-							
-				// 			const output = hit(defenderUnit, defenderIndex, defenderFleet, defenderDeadUnits, resources.defender, resources.attacker, options.defender, accumulation.defender);
-				// 			attackerHits -= output[0];
-				// 			defenderHits += output[1];
-
-				// 			attackerPass=false;
-				// 			defenderPass=false;
-				// 		} else {
-				// 			defenderPass = true;
-				// 		}
-				// 	} else {
-				// 		defenderPass = true;
-				// 	}
-					
-				// }
 			} else {
 				
 				while (defenderHitsSpecial > 0 && loops<10000){
@@ -1614,7 +1532,7 @@
 					const [attackerUnit, attackerIndex] = findUnit(attackerFleet, attackerHardPredicate, attackerSoftPredicate, attackerSpecialSoftPredicate);
 					if (attackerUnit){
 						
-						const output = hit(attackerUnit, attackerIndex, attackerFleet, attackerDeadUnits, resources.attacker, resources.defender, options.attacker, accumulation.attacker);
+						const output = hit(attackerUnit, attackerIndex, attackerFleet, attackerDeadUnits, game.BattleSide.attacker, battleType, state, accumulation, options)
 						defenderHitsSpecial -= output[0];		
 					} else {
 						break;
@@ -1627,7 +1545,7 @@
 					const [attackerUnit, attackerIndex] = findUnit(attackerFleet, attackerHardPredicate, attackerSoftPredicate, undefined);
 					if (attackerUnit){
 						
-						const output = hit(attackerUnit, attackerIndex, attackerFleet, attackerDeadUnits, resources.attacker, resources.defender, options.attacker, accumulation.attacker);
+						const output = hit(attackerUnit, attackerIndex, attackerFleet, attackerDeadUnits, game.BattleSide.attacker, battleType, state, accumulation, options)
 						defenderHits -= output[0];
 					} else {
 						break;
@@ -1640,7 +1558,7 @@
 					const [defenderUnit, defenderIndex] = findUnit(defenderFleet, defenderHardPredicate, defenderSoftPredicate, defenderSpecialSoftPredicate);
 					if (defenderUnit){
 						
-						const output = hit(defenderUnit, defenderIndex, defenderFleet, defenderDeadUnits, resources.defender, resources.attacker, options.defender, accumulation.defender);
+						const output = hit(defenderUnit, defenderIndex, defenderFleet, defenderDeadUnits, game.BattleSide.defender, battleType, state, accumulation, options)
 						attackerHitsSpecial -= output[0];
 					} else {
 						break
@@ -1654,7 +1572,9 @@
 					const [defenderUnit, defenderIndex] = findUnit(defenderFleet, defenderHardPredicate, defenderSoftPredicate, undefined);
 					if (defenderUnit){
 						
-						const output = hit(defenderUnit, defenderIndex, defenderFleet, defenderDeadUnits, resources.defender, resources.attacker, options.defender, accumulation.defender);
+						const output = hit(defenderUnit, defenderIndex, defenderFleet, defenderDeadUnits, game.BattleSide.defender, battleType, state, accumulation, options)
+
+						
 						attackerHits -= output[0];
 					} else {
 						break;
@@ -1666,20 +1586,33 @@
 				print("ERROR error Loops Max Achieved assign hits")
 			}
 
+			for (const unit of attackerFleet){
+				if (unit.alreadySustained){
+					unit.update({alreadySustained: false, immune: false})
+				}
+			}
+			for (const unit of defenderFleet){
+				if (unit.alreadySustained){
+					unit.update({alreadySustained: false, immune: false})
+				}
+			}
+
 			return [attackerDeadUnits, defenderDeadUnits, attackerHits+attackerHitsSpecial, defenderHits+defenderHitsSpecial];
 
 			// it would be faster to cache which soft predicates it can do, but special soft predicates are so rare, that this doesn't really matter
 			function findUnit(fleet, hardPredicate, softPredicate, specialSoftPredicate){
 				for (var i = fleet.length - 1; 0 <= i; i--) {
 					const unit = fleet[i];
-					if (hardPredicate(unit) && (!softPredicate || softPredicate(unit)) && (!specialSoftPredicate || specialSoftPredicate(unit))) {
+					const hard = unit.isDamageGhost && unit.damageCorporeal ? hardPredicate(unit.damageCorporeal) && hardPredicate(unit) : hardPredicate(unit);
+					if (hard && (!softPredicate || softPredicate(unit)) && (!specialSoftPredicate || specialSoftPredicate(unit))) {
 						return [unit,i]
 					}
 				}
 				if (softPredicate) {
 					for (var i = fleet.length - 1; 0 <= i; i--) {
 						const unit = fleet[i];
-						if (hardPredicate(unit) && (!specialSoftPredicate || specialSoftPredicate(unit))) {
+						const hard = unit.isDamageGhost && unit.damageCorporeal ? hardPredicate(unit.damageCorporeal) && hardPredicate(unit) : hardPredicate(unit);
+						if (hard && (!specialSoftPredicate || specialSoftPredicate(unit))) {
 							return [unit,i];
 						}
 					}
@@ -1687,7 +1620,8 @@
 				if (specialSoftPredicate) {
 					for (var i = fleet.length - 1; 0 <= i; i--) {
 						const unit = fleet[i];
-						if (hardPredicate(unit) && (!softPredicate || softPredicate(unit)) ) {
+						const hard = unit.isDamageGhost && unit.damageCorporeal ? hardPredicate(unit.damageCorporeal) && hardPredicate(unit) : hardPredicate(unit);
+						if (hard && (!softPredicate || softPredicate(unit)) ) {
 							return [unit,i];
 						}
 					}
@@ -1695,7 +1629,8 @@
 				if (softPredicate && specialSoftPredicate) {
 					for (var i = fleet.length - 1; 0 <= i; i--) {
 						const unit = fleet[i];
-						if (hardPredicate(unit)) {
+						const hard = unit.isDamageGhost && unit.damageCorporeal ? hardPredicate(unit.damageCorporeal) && hardPredicate(unit) : hardPredicate(unit);
+						if (hard) {
 							return [unit,i];
 						}
 					}
@@ -1703,23 +1638,33 @@
 				return [undefined, undefined]
 			}
 			
-			function hit(unit, i, fleet, deadUnits, thisSideResources, otherSideResources, thisSideOptions, thisSideAccumulation) {
+			function hit(unit, i, fleet, deadUnits, battleSide, battleType, state, accumulation, options) {
 
-				deadUnits.push(unit);
+				
 
 				var cancelled = 1;
 				var added = 0;
 
-				fleet.splice(i,1);
+				
+
+				var didItDie = false;
 
 				if (unit.isDamageGhost) {
-					[cancelled,added, didItDie] = sustainDamageEffect(unit, fleet, thisSideResources, otherSideResources, timing, thisSideOptions, thisSideAccumulation, isCombat);
+					[cancelled,added, didItDie] = sustainDamageEffect(unit, battleSide, battleType, state, accumulation, options, isCombat);
 					
-					if (didItDie && unit.damageCorporeal){
-						const idx = fleet.indexOf(unit.damageCorporeal);
-						if (idx !== -1) {
-							deadUnits.push(fleet.splice(idx,1)[0]);
-						}
+					
+				}
+
+				if (!unit.immune){
+					deadUnits.push(unit);
+					fleet.splice(i,1);
+				}
+				
+
+				if (didItDie && unit.damageCorporeal){
+					const idx = fleet.indexOf(unit.damageCorporeal);
+					if (idx !== -1) {
+						deadUnits.push(fleet.splice(idx,1)[0]);
 					}
 				}
 
@@ -1732,254 +1677,76 @@
 			
 		}
 
-		function sustainDamageEffect(unit, fleet,  thisSideResources, otherSideResources, timing, thisSideOptions, thisSideAccumulation, isCombat) {
-			if (thisSideOptions.baronyCommander){
-				thisSideAccumulation.tgsEarned++;
+		function sustainDamageEffect(unit, battleSide, battleType,  state, accumulation, options, isCombat) {
+			if (options[battleSide].baronyCommander){
+				accumulation[battleSide].tgsEarned++;
 			}
 			var kill = false;
 			if (unit.damageCorporeal !== undefined) {
-				
-				if (isCombat){
-					unit.damageCorporeal.update({damaged:true, ghostCorporeal:undefined, sustainedThisRound: true});
-				} else {
-					unit.damageCorporeal.update({damaged:true, ghostCorporeal:undefined});
+
+				var empyreanFlagship = (options[battleSide].empyreanFlagshipSupport || state.flags[battleSide].some(obj => obj.name === 'empyreanFlagship')) && state.resources[battleSide].tgs?.total >= 2;
+
+				const changes = {
+					damaged:true, 
+					ghostCorporeal:undefined,
 				}
 
+				if (isCombat) changes.sustainedThisRound = true;
+
 				
-				if (otherSideResources.directHit && otherSideResources.directHit.total > 0 && unit.damageCorporeal.typeShip && !unit.damageCorporeal.abilities.includes('directHitImmune')){
+				if (empyreanFlagship && battleSide === game.BattleSide.attacker && !kill){
+					accumulation[battleSide].tgsSpend += 2;
+					state.resources[battleSide].tgs.total -= 2;
+					delete changes.damaged;
+					delete changes.ghostCorporeal;
+
+					unit.update({immune: true, alreadySustained: true})
+				}
+				
+
+				var otherSide = game.BattleSide.opponent(battleSide)
+				
+				if (state.resources[otherSide].directHit?.total > 0 && unit.damageCorporeal.typeShip && !unit.damageCorporeal.abilities.includes('directHitImmune')){
 					
 					kill = true;
-					otherSideResources.directHit.total-=1;
+					state.resources[otherSide].directHit.total-=1;
+				} else if (state.resources[otherSide].spark?.total > 0 && !unit.damageCorporeal.abilities.includes('directHitImmune')){
+					
+					kill = true;
+					state.resources[otherSide].spark.total-=1;
 				}
+
+				if (empyreanFlagship && battleSide === game.BattleSide.defender && !kill){
+					accumulation[battleSide].tgsSpend += 2;
+					state.resources[battleSide].tgs.total -= 2;
+					delete changes.damaged;
+					delete changes.ghostCorporeal;
+
+					unit.update({immune: true, alreadySustained: true})
+				}
+
+				unit.damageCorporeal.update(changes);
+			}
+
+			var producedHits = 0;
+			if (unit.typeShip && options[battleSide].reflectiveShielding && state.poles[battleSide].reflectiveShielding === undefined && isCombat){
+				producedHits += 2;
+				state.poles[battleSide].reflectiveShielding = 'RSH';
 			}
 			
 			
 
-			return [thisSideOptions.nonEuclidean ? 2 : 1, 0, kill]; //cancelled hits, generated hits, did it die boolean
+			return [options[battleSide].nonEuclidean || (state.poles[battleSide].nonEuclideanOwns !== undefined) ? 2 : 1, producedHits, kill]; //cancelled hits, generated hits, did it die boolean
 		}
 
 
 
-		// function cancelHitsPassing(state, 
-		// 	attackerHardPredicate, attackerSoftPredicate, 
-		// 	defenderHardPredicate, defenderSoftPredicate,
-		// 	attackerHits, defenderHits,
-		// 	attackerHitsNonFighter, defenderHitsNonFighter, 
-		// 	attackerHitsRemainingSim, defenderHitsRemainingSim,
-		// 	attackerDeadUnits, defenderDeadUnits,
-		// 	attackerLost, defenderLost,
-		// 	throwType, battleType, options, accumulation){
-
-		// 	var attackerFleet = state.attacker;
-		// 	var defenderFleet = state.defender;
-		// 	var resources = state.resources;
-		// 	var flags = state.flags;
-		// 	var timing = state.timing;
-			
-
-		// 	var attackerPass = false;
-		// 	var defenderPass = false;
-
-		// 	var defenderHitsCancelled=0;
-		// 	var attackerHitsCancelled=0;
-
-		// 	const attackerOnce= new Set();
-		// 	const defenderOnce = new Set();
-
-		// 	var effAttackerSoftPredicate = attackerHitsNonFighter > 0 ? nonFighterShip : attackerSoftPredicate;
-		// 	var effDefenderSoftPredicate = defenderHitsNonFighter > 0 ? nonFighterShip : defenderSoftPredicate;
-
-		// 	var loops = 0
-		// 	while (!(attackerPass && defenderPass) && loops<10000){
-		// 		loops++;
-				
-		// 		if (attackerDeadUnits.length > 0 && defenderHitsCancelled < defenderHits + defenderHitsNonFighter) {
-		// 			var attackerCancels=[];
-		// 			for (var i = 0; i < cancelHits.length; i++) {
-		// 				var cancelHit = cancelHits[i];
-		// 				if 	(
-		// 					cancelHit.condition(
-		// 						attackerFleet,
-		// 						Math.max(defenderHits + defenderHitsNonFighter-defenderHitsCancelled,0),
-		// 						defenderHitsRemainingSim,
-		// 						attackerLost,
-		// 						resources.attacker,
-		// 						flags.attacker,
-		// 						throwType, 
-		// 						battleType,
-		// 						attackerOnce) &&
-		// 					checkTiming(timing, cancelHit.timing)
-		// 					) {
-		// 						attackerCancels.push(cancelHit)
-		// 					}
-		// 			}
-
-		// 			for (var i = attackerFleet.length - 1; 0 <= i; i--) {
-		// 				const unit = attackerFleet[i];
-		// 				if (unit.isDamageGhost && attackerHardPredicate(unit) && (!effAttackerSoftPredicate || effAttackerSoftPredicate(unit))){
-		// 					const output = {
-		// 						name:'sustainDamage',
-		// 						effect: function(){
-		// 							attackerFleet.splice(attackerFleet.indexOf(unit),1);
-		// 							return sustainDamageEffect(unit, attackerFleet, resources.attacker, resources.defender, timing, options.attacker,accumulation.attacker);
-									
-									
-		// 						},
-		// 						priority: 0 + options.attacker.duraniumArmor + options.attacker.nonEuclidean,
-		// 					}
-		// 					attackerCancels.push(output);
-		// 				}
-		// 			}
-		// 			if (effAttackerSoftPredicate){
-		// 				for (var i = attackerFleet.length - 1; 0 <= i; i--) {
-		// 					const unit = attackerFleet[i];
-		// 					if (unit.isDamageGhost && attackerHardPredicate(unit)){
-		// 						const output = {
-		// 							name:'sustainDamage',
-		// 							effect: function(){
-		// 								attackerFleet.splice(attackerFleet.indexOf(unit),1);
-		// 								return sustainDamageEffect(unit, attackerFleet, resources.attacker, resources.defender, timing, options.attacker,accumulation.attacker);
-		// 							},
-		// 							priority: 0 + options.attacker.duraniumArmor + options.attacker.nonEuclidean,
-		// 						}
-		// 						attackerCancels.push(output);
-		// 					}
-		// 				}
-		// 			}
-					
-		// 			// if (printB){
-		// 			// 	print(attackerCancels);
-		// 			// }
-					
-
-		// 			const attackerCancel = attackerCancels.length === 0
-		// 				? undefined
-		// 				: attackerCancels.reduce((bestSoFar, cur) =>
-		// 					cur.priority > bestSoFar.priority ? cur : bestSoFar);
-
-		// 			if (attackerCancel) {
-		// 				const output = attackerCancel.effect(attackerFleet, resources.attacker, resources.defender,  flags.attacker, timing, options.attacker, accumulation.attacker);
-		// 				defenderHitsCancelled += output[0];
-		// 				attackerHits += output[1];
-		// 				attackerOnce.add(attackerCancel.name);
-		// 				attackerPass=false;
-		// 				defenderPass=false;
-
-		// 				if (defenderHitsCancelled >= defenderHitsNonFighter){
-		// 					effAttackerSoftPredicate = attackerSoftPredicate;
-		// 				}
-		// 			} else {
-		// 				attackerPass=true;
-		// 			}
-
-		// 		} else {
-		// 			attackerPass = true;
-		// 		}
-
-
-
-		// 		if (attackerPass && defenderPass) { break;}
-
-		// 		if (defenderDeadUnits.length > 0 && attackerHitsCancelled < attackerHits + attackerHitsNonFighter) {
-		// 			var defenderCancels=[];
-		// 			for (var i = 0; i < cancelHits.length; i++) {
-		// 				var cancelHit = cancelHits[i];
-		// 				if 	(
-		// 					cancelHit.condition(
-		// 						defenderFleet,
-		// 						Math.max(attackerHits + attackerHitsNonFighter-attackerHitsCancelled,0), 
-		// 						attackerHitsRemainingSim,
-		// 						defenderLost,
-		// 						resources.defender,
-		// 						flags.defender,
-		// 						throwType, 
-		// 						battleType, 
-		// 						defenderOnce) &&
-		// 					checkTiming(timing, cancelHit.timing)
-		// 					) {
-		// 						defenderCancels.push(cancelHit);
-		// 					}
-		// 			}
-
-		// 			for (var i = defenderFleet.length - 1; 0 <= i; i--) {
-		// 				const unit = defenderFleet[i];
-		// 				if (unit.isDamageGhost && defenderHardPredicate(unit) && (!effDefenderSoftPredicate || effDefenderSoftPredicate(unit))){
-		// 					const output = {
-		// 						name:'sustainDamage',
-		// 						effect: function(){
-		// 							defenderFleet.splice(defenderFleet.indexOf(unit),1);
-		// 							return sustainDamageEffect(unit, defenderFleet, resources.defender, resources.attacker, timing,  options.defender,accumulation.defender);
-		// 						},
-		// 						priority: 0 + options.defender.duraniumArmor + options.defender.nonEuclidean,
-		// 					}
-		// 					defenderCancels.push(output);
-		// 				}
-		// 			}
-		// 			if (effDefenderSoftPredicate){
-		// 				for (var i = defenderFleet.length - 1; 0 <= i; i--) {
-		// 					const unit = defenderFleet[i];
-		// 					if (unit.isDamageGhost && defenderHardPredicate(unit)){
-		// 						const output = {
-		// 							name:'sustainDamage',
-		// 							effect: function(){
-		// 								defenderFleet.splice(defenderFleet.indexOf(unit),1);
-		// 								return sustainDamageEffect(unit, defenderFleet, resources.defender, resources.attacker, timing, options.defender,accumulation.defender);
-		// 							},
-		// 							priority: 0 + options.defender.duraniumArmor + options.defender.nonEuclidean,
-		// 						}
-		// 						defenderCancels.push(output);
-		// 					}
-		// 				}
-		// 			}
-
-					
-
-		// 			const defenderCancel = defenderCancels.length === 0
-		// 				? undefined
-		// 				: defenderCancels.reduce((bestSoFar, cur) =>
-		// 					cur.priority > bestSoFar.priority ? cur : bestSoFar);
-
-		// 			if (defenderCancel) {
-		// 				const output = defenderCancel.effect(defenderFleet, resources.defender, resources.attacker, flags.defender, timing, options.defender, accumulation.defender);
-						
-
-		// 				attackerHitsCancelled += output[0];
-		// 				defenderHits += output[1];
-
-		// 				defenderOnce.add(defenderCancel.name);
-		// 				attackerPass=false;
-		// 				defenderPass=false;
-
-		// 				if (attackerHitsCancelled >= attackerHitsNonFighter){
-		// 					effDefenderSoftPredicate = defenderSoftPredicate;
-		// 				}
-
-		// 			} else {
-		// 				defenderPass=true;
-		// 			}
-		// 		} else {
-		// 			defenderPass = true;
-		// 		}
-		// 	}
-
-
-		// 	// if (printB){
-		// 	// 	print([attackerHitsCancelled, defenderHitsCancelled, attackerHits,  defenderHits]);
-		// 	// 	print(attackerFleet);
-		// 	// }
-
-
-		// 	return [attackerHitsCancelled, defenderHitsCancelled, attackerHits,  defenderHits];
-
-
-		// }
-
-		// function takeHits(attacker, defender, attackerHits, defenderHits, attackerInflictedSpecial, defenderInflictedSpecial, attackerSpent, defenderSpent, resources, flags, flagsToAdd, throwType, timing, battleType, accumulation, options, passThrough, noSim=false){
+		
 
 		
 
 		
-		function cancelHitsPassing2(startState, 
+		function cancelHitsPassing(startState, 
 			attackerHardPredicate, attackerSoftPredicate, 
 			defenderHardPredicate, defenderSoftPredicate,
 			attackerSpecialSoftPredicate, defenderSpecialSoftPredicate,
@@ -1991,8 +1758,7 @@
 			throwType, battleType, options, accumulation, prob=1,
 		){
 
-			// var doAttacker = attackerDeadUnits.length > 0;
-			// var doDefender = defenderDeadUnits.length > 0;
+			
 
 			var isCombat = checkTiming(startState.timing, 'duringCombat_');
 
@@ -2010,25 +1776,44 @@
 			var attackerDeadSim = [];
 			var defenderDeadSim = [];
 
+			var attackerBestDead = [];
+			var defenderBestDead = [];
+
+			
+
+			if (startState.resources.attacker.divinity?.total > 0){
+				
+				game.fleetSort(attackerDeadUnits, battleType, options.attacker);
+				attackerBestDead = attackerDeadUnits.filter(obj => !obj.isDamageGhost).slice(0, startState.resources.attacker.divinity.total)
+			}
+
+			if (startState.resources.defender.divinity?.total > 0){
+				game.fleetSort(defenderDeadUnits, battleType, options.defender);
+				defenderBestDead = defenderDeadUnits.filter(obj => !obj.isDamageGhost).slice(0, startState.resources.defender.divinity.total)
+			}
 
 			const constants = {
 				attacker:{
 					do: attackerDeadUnits.length > 0,
+					dead: attackerDeadUnits,
 					hitsNonFighter: attackerHitsNonFighter,
 					hitsRemainingSim: attackerHitsRemainingSim,
 					didLose: didAttackerLose,
 					hardPredicate: attackerHardPredicate,
 					softPredicate: attackerSoftPredicate,
 					specialSoftPredicate:  attackerSpecialSoftPredicate,
+					bestDead: attackerBestDead,
 				},
 				defender:{
 					do: defenderDeadUnits.length > 0,
+					dead: defenderDeadUnits,
 					hitsNonFighter: defenderHitsNonFighter,
 					hitsRemainingSim: defenderHitsRemainingSim,
 					didLose: didDefenderLose,
 					hardPredicate: defenderHardPredicate,
 					softPredicate: defenderSoftPredicate,
 					specialSoftPredicate:  defenderSpecialSoftPredicate,
+					bestDead: defenderBestDead,
 				}
 			}
 
@@ -2043,6 +1828,7 @@
 					once: new Set(),
 					dead: [],
 					usedVoid : false,
+					divinity: 0,
 				},
 				defender:{
 					pass: false,
@@ -2051,6 +1837,7 @@
 					once: new Set(),
 					dead: [],
 					usedVoid : false,
+					divinity: 0,
 				},
 				transition: prob,
 				accumulation:accumulation,
@@ -2099,23 +1886,24 @@
 				var best = undefined;
 				var couldUseVoid = options[battleSide].voidShielding && !frame[battleSide].usedVoid;
 
+				
+
 				for (var i = frame.state[battleSide].length - 1; 0 <= i; i--) {
 					var unit = frame.state[battleSide][i];
 
 					
 
-					var priority = 0 + (options[battleSide].duraniumArmor || frame.state.poles[battleSide].duraniumArmor !== undefined) + (options[battleSide].nonEuclidean || frame.state.poles[battleSide].nonEuclidean !== undefined);
+					var priority = 0 + (options[battleSide].duraniumArmor || frame.state.poles[battleSide].duraniumArmorOwns !== undefined) + (options[battleSide].nonEuclidean || frame.state.poles[battleSide].nonEuclideanOwns !== undefined);
 
 					
 
 					
-
+					
 					
 					
 					if ((unit.isDamageGhost || (couldUseVoid && !unit.damaged && !unit.notUseSustain)) && constants[battleSide].hardPredicate(unit) && 
-					(!constants[battleSide].softPredicate || constants[battleSide].softPredicate(unit)) &&
-					(!constants[battleSide].specialSoftPredicate || frame[battleSide].hitsCancelled >= constants[battleSide].hitsNonFighter || constants[battleSide].specialSoftPredicate(unit))){
-							
+					(constants[battleSide].softPredicate === undefined || constants[battleSide].softPredicate(unit)) &&
+					(constants[battleSide].specialSoftPredicate === undefined || frame[battleSide].hitsCancelled >= constants[battleSide].hitsNonFighter || constants[battleSide].specialSoftPredicate(unit))){
 							
 
 							var idx = i;
@@ -2127,12 +1915,33 @@
 								frame.state[battleSide].push(unit);
 								priority += 2;
 							}
+
+							var diff = constants[otherSide].hitsRemainingSim - frame[battleSide].hitsCancelled;
+							if (frame[battleSide].divinity < frame.state.resources[battleSide].divinity?.total && (diff > 0 || (diff === 0 && constants[battleSide].didLose)) && unit.damageCorporeal){
+								var changes = {damaged: true};
+								if (isCombat){
+									changes.sustainedThisRound = true;
+								}
+								var unitTemp = unit.damageCorporeal.update(changes)
+								if (constants[battleSide].bestDead.some(obj => obj.label === unit.damageCorporeal.label || obj.label === unitTemp.label)){
+								 
+									frame[battleSide].divinity++;
+									unit.update({immune: true, alreadySustained: true});
+									continue;
+								}
+
+							}
 						
 							const output = {
 								name:'sustainDamage',
 								effect: function(){
-									frame.state[battleSide].splice(this.index,1);
-									return sustainDamageEffect(unit, frame.state[battleSide], frame.state.resources[battleSide], frame.state.resources[otherSide], frame.state.timing, options[battleSide], frame.accumulation[battleSide], isCombat);
+									const output = sustainDamageEffect(unit, battleSide, battleType, frame.state, frame.accumulation, options, isCombat);
+									if (!unit.immune){
+										frame.state[battleSide].splice(this.index,1);
+									}
+									return output;
+
+									
 									
 									
 								},
@@ -2157,6 +1966,8 @@
 						if ((unit.isDamageGhost || (options[battleSide].voidShielding && !frame[battleSide].usedVoid && !unit.damaged && !unit.notUseSustain)) && constants[battleSide].hardPredicate(unit) &&
 							(!constants[battleSide].specialSoftPredicate || frame[battleSide].hitsCancelled >= constants[battleSide].hitsNonFighter || constants[battleSide].specialSoftPredicate(unit))){
 
+								
+
 							var idx = i;
 							if (!unit.isDamageGhost){
 								unit = unit.toDamageGhost()
@@ -2165,12 +1976,33 @@
 								frame.state[battleSide].push(unit);
 								priority += 2;
 							}
+
+
+							var diff = constants[otherSide].hitsRemainingSim - frame[battleSide].hitsCancelled;
+							if (frame[battleSide].divinity < frame.state.resources[battleSide].divinity?.total && (diff > 0 || (diff === 0 && constants[battleSide].didLose)) && unit.damageCorporeal){
+								var changes = {damaged: true};
+								if (isCombat){
+									changes.sustainedThisRound = true;
+								}
+								var unitTemp = unit.damageCorporeal.update(changes)
+								if (constants[battleSide].bestDead.some(obj => obj.label === unit.damageCorporeal.label || obj.label === unitTemp.label)){
+								 
+									frame[battleSide].divinity++;
+									unit.update({immune: true, alreadySustained: true});
+									continue;
+								}
+
+							}
+
+
 							const output = {
 								name:'sustainDamage',
 								effect: function(){
-									// frame.state[battleSide].splice(frame.state[battleSide].indexOf(unit),1);
-									frame.state[battleSide].splice(this.index,1);
-									return sustainDamageEffect(unit, frame.state[battleSide], frame.state.resources[battleSide], frame.state.resources[otherSide], frame.state.timing, options[battleSide], accumulation[battleSide], isCombat);
+									const output = sustainDamageEffect(unit, battleSide, battleType, frame.state, frame.accumulation, options, isCombat);
+									if (!unit.immune){
+										frame.state[battleSide].splice(this.index,1);
+									}
+									return output;
 								},
 								priority: priority,
 								pointer: unit,
@@ -2189,6 +2021,8 @@
 						if ((unit.isDamageGhost || (options[battleSide].voidShielding && !frame[battleSide].usedVoid && !unit.damaged && !unit.notUseSustain)) && constants[battleSide].hardPredicate(unit) &&
 							(!constants[battleSide].softPredicate || constants[battleSide].softPredicate(unit))){
 
+								
+
 							var idx = i;
 							if (!unit.isDamageGhost){
 								unit = unit.toDamageGhost()
@@ -2197,12 +2031,34 @@
 								frame.state[battleSide].push(unit);
 								priority += 2;
 							}
+
+
+							var diff = constants[otherSide].hitsRemainingSim - frame[battleSide].hitsCancelled;
+							if (frame[battleSide].divinity < frame.state.resources[battleSide].divinity?.total && (diff > 0 || (diff === 0 && constants[battleSide].didLose)) && unit.damageCorporeal){
+								var changes = {damaged: true};
+								if (isCombat){
+									changes.sustainedThisRound = true;
+								}
+								var unitTemp = unit.damageCorporeal.update(changes)
+								if (constants[battleSide].bestDead.some(obj => obj.label === unit.damageCorporeal.label || obj.label === unitTemp.label)){
+								 
+									frame[battleSide].divinity++;
+									unit.update({immune: true, alreadySustained: true});
+									continue;
+								}
+
+							}
+
+
+
 							const output = {
 								name:'sustainDamage',
 								effect: function(){
-									// frame.state[battleSide].splice(frame.state[battleSide].indexOf(unit),1);
-									frame.state[battleSide].splice(this.index,1);
-									return sustainDamageEffect(unit, frame.state[battleSide], frame.state.resources[battleSide], frame.state.resources[otherSide], frame.state.timing, options[battleSide], accumulation[battleSide], isCombat);
+									const output = sustainDamageEffect(unit, battleSide, battleType, frame.state, frame.accumulation, options, isCombat);
+									if (!unit.immune){
+										frame.state[battleSide].splice(this.index,1);
+									}
+									return output;
 								},
 								priority: priority,
 								pointer: unit,
@@ -2220,6 +2076,8 @@
 						const unit = frame.state[battleSide][i];
 						if ((unit.isDamageGhost || (options[battleSide].voidShielding && !frame[battleSide].usedVoid && !unit.damaged && !unit.notUseSustain)) && constants[battleSide].hardPredicate(unit)){
 
+							
+
 							var idx = i;
 							if (!unit.isDamageGhost){
 								unit = unit.toDamageGhost()
@@ -2228,12 +2086,34 @@
 								frame.state[battleSide].push(unit);
 								priority += 2;
 							}
+
+
+							var diff = constants[otherSide].hitsRemainingSim - frame[battleSide].hitsCancelled;
+							if (frame[battleSide].divinity < frame.state.resources[battleSide].divinity?.total && (diff > 0 || (diff === 0 && constants[battleSide].didLose)) && unit.damageCorporeal){
+								var changes = {damaged: true};
+								if (isCombat){
+									changes.sustainedThisRound = true;
+								}
+								var unitTemp = unit.damageCorporeal.update(changes)
+								if (constants[battleSide].bestDead.some(obj => obj.label === unit.damageCorporeal.label || obj.label === unitTemp.label)){
+								 
+									frame[battleSide].divinity++;
+									unit.update({immune: true, alreadySustained: true});
+									continue;
+								}
+
+							}
+
+
 							const output = {
 								name:'sustainDamage',
 								effect: function(){
 									
-									frame.state[battleSide].splice(this.index,1);
-									return sustainDamageEffect(unit, frame.state[battleSide], frame.state.resources[battleSide], frame.state.resources[otherSide], frame.state.timing, options[battleSide], accumulation[battleSide], isCombat);
+									const output = sustainDamageEffect(unit, battleSide, battleType, frame.state, frame.accumulation, options, isCombat);
+									if (!unit.immune){
+										frame.state[battleSide].splice(this.index,1);
+									}
+									return output;
 								},
 								priority: priority,
 								pointer: unit,
@@ -2267,11 +2147,14 @@
 								Math.max(frame[otherSide].hits + constants[otherSide].hitsNonFighter-frame[otherSide].hitsCancelled,0),
 								constants[otherSide].hitsRemainingSim,
 								constants[battleSide].didLose,
-								frame.state.resources[battleSide],
-								frame.state.flags[battleSide],
-								throwType, 
+								throwType,
+								frame[battleSide].once,
+								battleSide,
 								battleType,
-								frame[battleSide].once) &&
+								frame.state,
+								frame.accumulation,
+								options
+								) &&
 							checkTiming(frame.state.timing, cancelHit.timing)
 
 							){
@@ -2281,11 +2164,12 @@
 
 						}
 					}
-					var hypotheticalMax = 0 + (options[battleSide].duraniumArmor || frame.state.poles[battleSide].duraniumArmor !== undefined) + (options[battleSide].nonEuclidean || frame.state.poles[battleSide].nonEuclidean !== undefined) + (frame[battleSide].usedVoid && options[battleSide].voidShielding !== undefined);
+					var hypotheticalMax = 0 + (options[battleSide].duraniumArmor || frame.state.poles[battleSide].duraniumArmorOwns !== undefined) + (options[battleSide].nonEuclidean || frame.state.poles[battleSide].nonEuclideanOwns !== undefined) + (frame[battleSide].usedVoid && options[battleSide].voidShielding !== undefined);
 					
 					if (bestPriority < hypotheticalMax){
 						
 						cancels.push(getSustain(frame, battleSide, otherSide))
+						// print(cancels);
 					}
 
 					
@@ -2298,7 +2182,7 @@
 							cur.priority > bestSoFar.priority ? cur : bestSoFar);
 
 					if (cancel){
-						const output = cancel.effect(frame.state[battleSide], frame.state.resources[battleSide], frame.state.resources[battleSide],  frame.state.flags[battleSide], frame.state.timing, options[battleSide], frame.accumulation[battleSide]);
+						const output = cancel.effect(frame.state[battleSide], battleSide, battleType, frame.state, frame.accumulation, options);
 
 						frame[otherSide].hitsCancelled += output[0];
 						frame[battleSide].hits += output[1];
@@ -2308,10 +2192,13 @@
 
 						if (output[2] && cancel.pointer !== undefined && (!cancel.pointer.isDamageGhost || cancel.pointer.damageCorporeal !== undefined)){
 							const deadUnit = cancel.pointer.isDamageGhost ? cancel.pointer.damageCorporeal : cancel.pointer;
-							frame[battleSide].dead.push({
-								isDamageGhost: deadUnit.isDamageGhost,
-								type: deadUnit.type,
-							});
+							// frame[battleSide].dead.push({
+							// 	isDamageGhost: deadUnit.isDamageGhost,
+							// 	type: deadUnit.type,
+							// 	label: deadUnit.label,
+							// 	abilities: deadUnit.abilities,
+							// });
+							frame[battleSide].dead.push(deadUnit);
 							
 
 							
@@ -2339,6 +2226,8 @@
 											hits: frame.attacker.hits,
 											once: new Set(frame.attacker.once),
 											dead: simpleListClone(frame.attacker.dead).push(...newDead[0][i]),
+											usedVoid: frame.attacker.usedVoid,
+											divinity: frame.attacker.divinity,
 										},
 										defender: {
 											pass: false,
@@ -2346,6 +2235,8 @@
 											hits: frame.defender.hits,
 											once: new Set(frame.defender.once),
 											dead: simpleListClone(frame.defender.dead).push(...newDead[1][i]),
+											usedVoid: frame.defender.usedVoid,
+											divinity: frame.defender.divinity,
 										},
 										transition: frame.transition * tran[i],
 										accumulation: newAccs[i],
@@ -2381,7 +2272,7 @@
 		}
 
 		function takeHits2(startState, attackerHits, defenderHits, attackerHitsSpecial, defenderHitsSpecial,
-			attackerSpecialSoftPredicate, defenderSpecialSoftPredicate, attackerSpent, defenderSpent, flagsToAdd, polesToAdd, delayedSpend, throwType, battleType, options, noSim=false, prob=1){
+			attackerSoftPredicate, defenderSoftPredicate, attackerSpecialSoftPredicate, defenderSpecialSoftPredicate, attackerSpent, defenderSpent, flagsToAdd, polesToAdd, delayedSpend, throwType, battleType, options, noSim=false, prob=1){
 
 			var [attackerClone,defenderClone,flagsClone] = cloneFleetsAndFlags(startState.attacker,startState.defender,startState.flags);
 			var polesClone = resourcesClone(startState.poles);
@@ -2445,8 +2336,22 @@
 				
 				terminal: false,
 				retreat: startState.retreat,
+				notParticipating: startState.notParticipating,
 				
 			}
+
+			var attackerWaylay = false;
+			var defenderWaylay = false;
+			if (throwType === game.ThrowType.Barrage && clonedState.resources.attacker.waylay?.total > 0){
+				clonedState.resources.attacker.waylay.total -= 1;
+				attackerWaylay = true;
+			}
+			if (throwType === game.ThrowType.Barrage && clonedState.resources.defender.waylay?.total > 0){
+				clonedState.resources.defender.waylay.total -= 1;
+				defenderWaylay = true;
+			}
+
+			
 
 			var stack = [];
 			stack.push({
@@ -2470,8 +2375,20 @@
 				skip: undefined,
 			})
 
-			var hardPredicate = function(unit) {
-				return (unit.immune) ? false : (throwType === game.ThrowType.Barrage ? unit.type === game.UnitType.Fighter : true);
+			
+
+			var hardPredicateAttacker = function(unit) {
+				if (unit.immune) return false;
+				if (unit.abilities.includes('naazRokhaMechImmune') && (throwType === game.ThrowType.Barrage || throwType === game.ThrowType.SpaceCannon || throwType === game.ThrowType.Bombardment)) return false;
+				if (throwType === game.ThrowType.Barrage && !defenderWaylay) return unit.type === game.UnitType.Fighter;
+				return true;
+			};
+
+			var hardPredicateDefender = function(unit) {
+				if (unit.immune) return false;
+				if (unit.abilities.includes('naazRokhaMechImmune') && (throwType === game.ThrowType.Barrage || throwType === game.ThrowType.SpaceCannon || throwType === game.ThrowType.Bombardment)) return false;
+				if (throwType === game.ThrowType.Barrage && !attackerWaylay) return unit.type === game.UnitType.Fighter;
+				return true;
 			};
 
 			var transitions = []
@@ -2488,6 +2405,8 @@
 
 			while (stack.length){
 				const frame = stack.shift();
+
+				
 
 
 				if (throwType === game.ThrowType.Barrage && (frame.skip !== 'barrage' && frame.skip !== 'cancel')){
@@ -2590,7 +2509,7 @@
 				if ((noSim === undefined || !noSim) && frame.skip !== 'cancel') {
 
 
-					var [transitionsSim, newStatesSim, _,[attackerDeadSim, defenderDeadSim], [attackerHitsRemainingsSim, defenderHitsRemainingsSim]]= takeHits2(frame.state, frame.attacker.hits, frame.defender.hits, frame.attacker.hitsSpecial, frame.defender.hitsSpecial, attackerSpecialSoftPredicate, defenderSpecialSoftPredicate, 0, 0, undefined, undefined, undefined, throwType, battleType, options, true)
+					var [transitionsSim, newStatesSim, _,[attackerDeadSim, defenderDeadSim], [attackerHitsRemainingsSim, defenderHitsRemainingsSim]]= takeHits2(frame.state, frame.attacker.hits, frame.defender.hits, frame.attacker.hitsSpecial, frame.defender.hitsSpecial, attackerSoftPredicate, defenderSoftPredicate, attackerSpecialSoftPredicate, defenderSpecialSoftPredicate, 0, 0, undefined, undefined, undefined, throwType, battleType, options, true)
 
 					const idx = transitionsSim.reduce(
 						(bestIdx, x, i, a) => (x > a[bestIdx] ? i : bestIdx),
@@ -2598,15 +2517,16 @@
 					);
 
 					
-					var attackerSustainHardPredicate = makeSustainHardPredicate(attackerDeadSim[idx], hardPredicate, options.attacker);
-					var defenderSustainHardPredicate = makeSustainHardPredicate(defenderDeadSim[idx], hardPredicate, options.defender);
+					var attackerSustainHardPredicate = makeSustainHardPredicate(attackerDeadSim[idx], hardPredicateAttacker, options.attacker);
+					var defenderSustainHardPredicate = makeSustainHardPredicate(defenderDeadSim[idx], hardPredicateDefender, options.defender);
 
-
-					// print([frame.attacker.hits, frame.defender.hits]);
-					var [tran, newStat, newAcc, newHits,  deadSim] = cancelHitsPassing2(
+					// print([frame.attacker.hits, frame.defender.hits,
+					// 	frame.attacker.hitsSpecial, frame.defender.hitsSpecial,])
+					// print(frame.state)
+					var [tran, newStat, newAcc, newHits,  deadSim] = cancelHitsPassing(
 						frame.state,
-						attackerSustainHardPredicate, undefined, 
-						defenderSustainHardPredicate, undefined,
+						attackerSustainHardPredicate, attackerSoftPredicate, 
+						defenderSustainHardPredicate, defenderSoftPredicate,
 						attackerSpecialSoftPredicate, defenderSpecialSoftPredicate,
 						frame.attacker.hits, frame.defender.hits,
 						frame.attacker.hitsSpecial, frame.defender.hitsSpecial,
@@ -2616,7 +2536,7 @@
 						fleetLength(newStatesSim[idx].defender) === 0,
 						throwType, battleType, options, frame.accumulation);
 
-					// print(newHits);
+					// print(newStat)
 
 					if (tran.length > 0){
 						for (var i = 1; i < tran.length; i++){
@@ -2655,12 +2575,24 @@
 						frame.defender.deadSim= frame.defender.deadSim.concat(deadSim[1][0]);
 					}
 				}
-				// print([frame.attacker.hits, frame.defender.hits]);
-				const [attackerDeadUnits, defenderDeadUnits, attackerHitsRemaining, defenderHitsRemaining] = assignHitsStep(frame.state.attacker, frame.attacker.hits, frame.attacker.hitsSpecial, frame.state.defender, frame.defender.hits, frame.defender.hitsSpecial, hardPredicate, undefined, attackerSpecialSoftPredicate, hardPredicate, undefined, defenderSpecialSoftPredicate, frame.state.resources, frame.state.timing, options, frame.accumulation, noSim);
+				// var poi = frame.attacker.hits >= 2;
+				// if (poi){
+				// 	print(frame.attacker.hits);
+				// 	print(frame.state)
+				// 	print(frame.state.defender)
+				// }
+				
+				const [attackerDeadUnits, defenderDeadUnits, attackerHitsRemaining, defenderHitsRemaining] = assignHitsStep(frame.state.attacker, frame.attacker.hits, frame.attacker.hitsSpecial, frame.state.defender, frame.defender.hits, frame.defender.hitsSpecial, hardPredicateAttacker, attackerSoftPredicate, attackerSpecialSoftPredicate, hardPredicateDefender, defenderSoftPredicate, defenderSpecialSoftPredicate, battleType, frame.state, frame.accumulation,options, noSim);
+				// if (poi){
+				// 	print(frame.state.defender);
+				// 	print(frame.state);
+				// }
+				
+				
 
-				var [tran, newStat, newDeadSims, newAccs] = resolveDead2(frame.state, attackerDeadUnits, defenderDeadUnits, frame.accumulation, battleType, options);
+				var [tran, newStat, newDeadSims, newAccs] = resolveDead2(frame.state, attackerDeadUnits, defenderDeadUnits, frame.accumulation, battleType, options, {noDivinity: noSim});
 
-				// print(newAccs);
+				
 
 				if (tran.length > 0){
 					for (var i = 0; i < tran.length; i++){
@@ -2710,158 +2642,7 @@
 
 
 
-		// function takeHits(state, attackerHits, defenderHits, attackerInflictedSpecial, defenderInflictedSpecial, attackerSpent, defenderSpent, flagsToAdd, throwType, battleType, accumulation, options, passThrough=false, noSim=false){
-
-		// 	var attacker = state.attacker;
-		// 	var defender = state.defender;
-		// 	var resources = state.resources;
-		// 	var flags = state.flags;
-		// 	var timing = state.timing;
-
-		// 	var attackerClone = attacker;
-		// 	var defenderClone = defender;
-		// 	var resClone = resources;
-		// 	var flagsClone = flags;
-		// 	var accClone = accumulation;
-			
-		// 	if (passThrough === undefined || !passThrough) {
-		// 		[attackerClone,defenderClone,flagsClone] = cloneFleetsAndFlags(attacker,defender,flags);
-		// 		resClone = resourcesClone(resources);
-		// 		// resClone = structuredClone(resources);
-		// 		accClone = {attacker:{tgsEarned:0, tgsSpent:0}, defender:{tgsEarned:0, tgsSpent:0}, rounds:0};
-		// 	}
-
-			
-
-			
-
-		// 	accClone.attacker.tgsSpent += attackerSpent;
-		// 	accClone.defender.tgsSpent += defenderSpent;
-		// 	if (resClone.attacker.tgs) resClone.attacker.tgs.total = Math.max(resClone.attacker.tgs.total - attackerSpent,0);
-		// 	if (resClone.defender.tgs) resClone.defender.tgs.total = Math.max(resClone.defender.tgs.total-defenderSpent,0);
-
-
-		// 	if (flagsToAdd && flagsToAdd.attacker){
-		// 		flagsClone.attacker.push({
-		// 			name:flagsToAdd.attacker.name,
-		// 			shortType:flagsToAdd.attacker.shortType,
-		// 			duration:flagsToAdd.attacker.duration,
-		// 		})
-		// 	}
-		// 	if (flagsToAdd && flagsToAdd.defender){
-		// 		flagsClone.defender.push({
-		// 			name:flagsToAdd.defender.name,
-		// 			shortType:flagsToAdd.defender.shortType,
-		// 			duration:flagsToAdd.defender.duration,
-		// 		})
-		// 	}
-
-
-
-		// 	var newState = {
-		// 		attacker: attackerClone,
-		// 		defender: defenderClone,
-		// 		resources: resClone,
-		// 		flags: flagsClone,
-		// 		startKey: undefined,
-		// 		timing: state.timing,
-		// 		prob: 0,
-		// 		turn: state.turn,
-				
-		// 		terminal: state.terminal,
-		// 		retreat: state.retreat,
-		// 	}
-
-
-
-
-
-
-		// 	var hardPredicate = function(unit) {
-		// 		return unit.cancelHit ? false : (throwType === game.ThrowType.Barrage ? unit.type === game.UnitType.Fighter : true);
-		// 	};
-
-		// 	var attackerHitsNonFighter = attackerInflictedSpecial; 
-		// 	var defenderHitsNonFighter = defenderInflictedSpecial;
-
-		// 	var attackerSustainHardPredicate = hardPredicate;
-		// 	var defenderSustainHardPredicate = hardPredicate;
-
-		// 	var attackerDeadSim = [];
-		// 	var defenderDeadSim = [];
-		// 	var attackerHitsRemainingSim = 0;
-		// 	var defenderHitsRemainingSim = 0;
-
-		// 	var attackerLostSim = false;
-		// 	var defenderLostSim = false;
-
-		// 	// noSim = true;
-
-		// 	if (noSim === undefined || !noSim) {
-		// 		[,,,,,attackerDeadSim, defenderDeadSim,attackerHitsRemainingSim, defenderHitsRemainingSim, attackerLostSim, defenderLostSim] = takeHits(newState, attackerHits, defenderHits, attackerHitsNonFighter, defenderHitsNonFighter, 0, 0,  undefined, throwType,  battleType, accClone, options, false, true);
-
-		// 		// print(''+ attackerHits + defenderHits)
-		// 		// print(attackerClone);
-
-		// 		attackerSustainHardPredicate = makeSustainHardPredicate(attackerDeadSim, hardPredicate);
-		// 		defenderSustainHardPredicate = makeSustainHardPredicate(defenderDeadSim, hardPredicate);
-
-				
-
-		// 		[attackerHitsCancelled, defenderHitsCancelled, attackerHits, defenderHits] = cancelHitsPassing(
-		// 			newState,
-		// 			attackerSustainHardPredicate, undefined, 
-		// 			defenderSustainHardPredicate, undefined, 
-		// 			attackerHits, defenderHits,
-		// 			attackerHitsNonFighter,defenderHitsNonFighter, 
-		// 			attackerHitsRemainingSim, defenderHitsRemainingSim,
-		// 			attackerDeadSim, defenderDeadSim,
-		// 			attackerLostSim, defenderLostSim,
-		// 			 throwType, battleType, options, accClone);
-
-		// 		// print(attackerClone);
-		// 		// print(''+ attackerHitsCancelled + defenderHitsCancelled)
-		// 		// print(''+ attackerHits + defenderHits)
-		// 		// print('done');
-
-		// 		attackerHits =  Math.max(attackerHits - Math.max(attackerHitsCancelled-attackerHitsNonFighter,0),0);
-		// 		attackerHitsNonFighter = Math.max(attackerHitsNonFighter-attackerHitsCancelled,0);
-				
-		// 		defenderHits =  Math.max(defenderHits - Math.max(defenderHitsCancelled-defenderHitsNonFighter,0),0);
-		// 		defenderHitsNonFighter = Math.max(defenderHitsNonFighter-defenderHitsCancelled,0);
-				
-				
-		// 	}
-
-
-			
-
-			
-
-		// 	const [attackerDeadUnits, defenderDeadUnits, attackerHitsRemaining, defenderHitsRemaining] = assignHitsStep(attackerClone, attackerHits, attackerHitsNonFighter, defenderClone, defenderHits, defenderHitsNonFighter, hardPredicate, undefined, hardPredicate, undefined, resClone, timing, options, accClone, noSim);
-
-		// 	if (attackerDeadUnits.length > 0){
-		// 		// print(newState);
-		// 		// print(attackerDeadUnits);
-		// 		var outputs = resolveDead2(newState, attackerDeadUnits, defenderDeadUnits, battleType, options);
-		// 		// print(outputs);
-		// 		// print('Done')
-		// 	}
-
-		// 	resolveDead(attackerDeadUnits, defenderDeadUnits, attackerClone, defenderClone, battleType, flagsClone, timing, options);
-
-		// 	const attackerLost = fleetLength(attackerClone) === 0;
-		// 	const defenderLost = fleetLength(defenderClone) === 0;
-
-		// 	// const attackerLost = false;
-		// 	// const defenderLost = false;
-
-		// 	return [attackerClone, defenderClone, resClone, flagsClone, accClone, attackerDeadUnits, defenderDeadUnits, attackerHitsRemaining, defenderHitsRemaining, attackerLost, defenderLost];
-
-		// 	return [newStates, newTransitions, attackerDeadUnits, defenderDeadUnits, attackerHitsRemaining, defenderHitsRemaining, attackerLost, defenderLost]
-
-
-		// }
+		
 
 		
 
@@ -2945,11 +2726,22 @@
 			return output;
 		}
 
-		function matrixToStates(state, attackerTransitions3D, defenderTransitions3D, flagsToAdd, polesToAdd, delayedSpend, accumulations, throwType, battleType, options, elapsedMili, multiplier=1, attackerTransitions3DNoThun = [[[1]]], defenderTransitions3DNoThun = [[[1]]], delayedSpendThun = {attacker:{}, defender: {}}){
+		function matrixToStates(state, attackerTransitions3D, defenderTransitions3D, flagsToAdd, polesToAdd, delayedSpend, accumulations, throwType, battleType, options, elapsedMili, 
+			{
+				multiplier=1, 
+				attackerTransitions3DNoThun = [[[1]]], 
+				defenderTransitions3DNoThun = [[[1]]], 
+				delayedSpendThun = {attacker:{}, defender: {}}, 
+				attackerSpecialSoftPredicate = undefined, 
+				defenderSpecialSoftPredicate= undefined,
+				attackerSoftPredicate = undefined,
+				defenderSoftPredicate = undefined,
+			} = {}){
 
 			// const transitionMatrix = orthogonalMultiplyMatrixSpecial(attackerTransitions,defenderTransitions, attackerTransitionsSpecial,defenderTransitionsSpecial); 
 
 
+			
 			
 			
 			
@@ -2973,6 +2765,16 @@
 			const isCombatRolls = state.timing === 'combatRolls';
 			const isCombat = checkTiming(state.timing, 'duringCombat', true);
 			const isBarrage = state.timing === 'barrage';
+
+			var attackerSpecialSoftPredicate = attackerSpecialSoftPredicate ? attackerSpecialSoftPredicate : ( isCombat ? nonFighterShip : undefined);
+			var defenderSpecialSoftPredicate = defenderSpecialSoftPredicate ? defenderSpecialSoftPredicate : ( isCombat ? nonFighterShip : undefined);
+
+
+			var attackerValkyrie = isCombatRolls && (options.attacker.valkyrie || state.poles.attacker.valkyrieOwns !== undefined) && battleType === game.BattleType.Ground;
+
+			var defenderValkyrie = isCombatRolls && (options.defender.valkyrie || state.poles.defender.valkyrieOwns !== undefined) && battleType === game.BattleType.Ground;
+
+			
 
 			
 
@@ -3002,6 +2804,7 @@
 				}
 			}
 
+			
 			var scale=multiplier;
 			if (tick == (transitionMatrix.rows*transitionMatrix.columns * transitionMatrix.dim3 * transitionMatrix.dim4)){
 			
@@ -3012,6 +2815,7 @@
 				scale = multiplier/(1-totalBelow);
 			}
 
+			
 			var attackerThun = state.resources.attacker.nomadAgent?.total > 0 && isCombatRolls;
 			var defenderThun = state.resources.defender.nomadAgent?.total > 0 && isCombatRolls;
 
@@ -3159,8 +2963,8 @@
 			// var majorityAttackerInflicted = 0;
 			// var majorityDefenderInflicted = 0;
 
-			var attackerSpecialSoftPredicate = isCombatRolls ? nonFighterShip : undefined;
-			var defenderSpecialSoftPredicate = isCombatRolls ? nonFighterShip : undefined;
+			// var attackerSpecialSoftPredicate = isCombatRolls ? nonFighterShip : undefined;
+			// var defenderSpecialSoftPredicate = isCombatRolls ? nonFighterShip : undefined;
 
 			outer: 
 			for (let attackerInflicted = 0; attackerInflicted < transitionMatrix.rows; attackerInflicted++) {
@@ -3174,11 +2978,17 @@
 							// prob = transitionMatrix.at(attackerInflicted, defenderInflicted);
 							var prob = transitionMatrix[attackerInflicted][defenderInflicted][attackerInflictedSpecial][defenderInflictedSpecial][attackerSpent][defenderSpent] * scale;
 
+							var attackerHits = attackerInflicted;
+							var defenderHits = defenderInflicted;
+
+
+							
+
 							
 
 
-							var attackerTotal = attackerInflicted + (isBarrage ? 0 : attackerInflictedSpecial);
-							var defenderTotal = defenderInflicted + (isBarrage ? 0 : defenderInflictedSpecial);
+							var attackerTotal = attackerHits + (isBarrage ? 0 : attackerInflictedSpecial);
+							var defenderTotal = defenderHits + (isBarrage ? 0 : defenderInflictedSpecial);
 
 								
 
@@ -3206,10 +3016,31 @@
 							if (prob === 0){ continue;}
 
 							
+							if (attackerValkyrie && defenderValkyrie && attackerHits + attackerInflictedSpecial + defenderHits + defenderInflictedSpecial !== 0){
+								attackerHits += 1;
+								defenderHits += 1;
+
+							} else if (attackerValkyrie && defenderHits + defenderInflictedSpecial !== 0){
+								attackerHits += 1;
+							} else if (defenderValkyrie && attackerHits + attackerInflictedSpecial !== 0){
+								defenderHits += 1;
+							}
+
+
+							// print(state.timing)
+							// print([prob, scale, transitionMatrix[attackerInflicted][defenderInflicted][attackerInflictedSpecial][defenderInflictedSpecial][attackerSpent][defenderSpent]])
+							// print(transitionMatrix);
+							// print([attackerInflicted, defenderInflicted, attackerInflictedSpecial, defenderInflictedSpecial]);
+							// print(state.defender)
+							// print(state)
 							
-							var [newTransitions, newStates, newAccs, , ] = takeHits2(state, attackerInflicted, defenderInflicted, attackerInflictedSpecial, defenderInflictedSpecial, attackerSpecialSoftPredicate,defenderSpecialSoftPredicate,  attackerSpent, defenderSpent, flagsToAdd, polesToAdd, delayedSpend, throwType, battleType, options, false, 1);
+							var [newTransitions, newStates, newAccs, , ] = takeHits2(state, attackerHits, defenderHits, attackerInflictedSpecial, defenderInflictedSpecial, attackerSoftPredicate, defenderSoftPredicate, attackerSpecialSoftPredicate,defenderSpecialSoftPredicate,  attackerSpent, defenderSpent, flagsToAdd, polesToAdd, delayedSpend, throwType, battleType, options, false, 1);
 
 							
+
+							// print(newStates[0].defender);
+							// print(newStates[0]);
+							// print('');
 
 
 							for (var i = 0; i < newTransitions.length; i++){
@@ -3220,13 +3051,13 @@
 								// print(newState);
 
 								if (isCombatRolls){
-									if (options.attacker.duraniumArmor || state.poles.attacker.duraniumArmor){
+									if (options.attacker.duraniumArmor || state.poles.attacker.duraniumArmorOwns){
 										// print('trigger');
 										
 
 										duraniumArmorRepair(game.BattleSide.attacker, battleType, newState, newAcc, options);
 									}
-									if (options.defender.duraniumArmor || state.poles.defender.duraniumArmor) {
+									if (options.defender.duraniumArmor || state.poles.defender.duraniumArmorOwns) {
 										duraniumArmorRepair(game.BattleSide.defender, battleType, newState, newAcc, options);
 									}
 								}
@@ -3317,6 +3148,7 @@
 						
 						terminal: false,
 						retreat: state.retreat,
+						notParticipating: state.notParticipating,
 					}
 
 					var attackerMatrix = attackerTransitions3D;
@@ -3330,7 +3162,7 @@
 
 					stateClone.resources.attacker.nomadAgent.total -= 1;
 
-					var [transitionArrayTemp, newStatesArrayTemp, rewardsArrayTemp, ] = matrixToStates(stateClone, attackerMatrix, defenderMatrix, flagsToAdd, polesToAdd, delay, accClone, throwType, battleType, options, elapsedMili, pDefenderOutperforms, attackerTransitions3DNoThun, defenderTransitions3DNoThun, delayedSpendThun);
+					var [transitionArrayTemp, newStatesArrayTemp, rewardsArrayTemp, ] = matrixToStates(stateClone, attackerMatrix, defenderMatrix, flagsToAdd, polesToAdd, delay, accClone, throwType, battleType, options, elapsedMili, {pDefenderOutperforms, attackerTransitions3DNoThun, defenderTransitions3DNoThun, delayedSpendThun, attackerSpecialSoftPredicate, defenderSpecialSoftPredicate});
 
 					
 					transitionArray.push(...transitionArrayTemp);
@@ -3363,6 +3195,7 @@
 						
 						terminal: false,
 						retreat: state.retreat,
+						notParticipating: state.notParticipating,
 					}
 
 					var attackerMatrix = attackerTransitions3D;
@@ -3376,7 +3209,7 @@
 
 					stateClone.resources.defender.nomadAgent.total -= 1;
 
-					var [transitionArrayTemp, newStatesArrayTemp, rewardsArrayTemp, ] = matrixToStates(stateClone, attackerMatrix, defenderMatrix, flagsToAdd, polesToAdd, delay, accClone, throwType, battleType, options, elapsedMili, pAttackerOutperforms, attackerTransitions3DNoThun, defenderTransitions3DNoThun, delayedSpendThun);
+					var [transitionArrayTemp, newStatesArrayTemp, rewardsArrayTemp, ] = matrixToStates(stateClone, attackerMatrix, defenderMatrix, flagsToAdd, polesToAdd, delay, accClone, throwType, battleType, options, elapsedMili, {pAttackerOutperforms, attackerTransitions3DNoThun, defenderTransitions3DNoThun, delayedSpendThun, attackerSpecialSoftPredicate, defenderSpecialSoftPredicate});
 
 					
 					transitionArray.push(...transitionArrayTemp);
@@ -3626,8 +3459,26 @@
 			// var attackerFull = structuredClone(input.unitsFull.attacker);
 			// var defenderFull = structuredClone(input.unitsFull.defender);
 
-			applyContinuousEffectsOnUnits(attackerFull, [], game.BattleSide.attacker, battleType, 'beforeCombat', options.attacker);
-			applyContinuousEffectsOnUnits(defenderFull, [], game.BattleSide.defender, battleType, 'beforeCombat', options.defender);
+			const fakeState = {
+				timing: 'beforeEverything', 
+				flags: {
+					attacker: [],
+					defender: []
+				},
+				poles: {
+					attacker: {},
+					defender: {}
+				},
+				notParticipating: {
+					attacker: [],
+					defender: [],
+				},
+				attacker: attackerFull,
+				defender: defenderFull,
+			}
+
+			applyContinuousEffectsOnUnits(attackerFull, game.BattleSide.attacker, battleType, fakeState, undefined, options);
+			applyContinuousEffectsOnUnits(defenderFull, game.BattleSide.defender, battleType, fakeState, undefined, options);
 
 			printCache(cache);
 
@@ -3646,8 +3497,13 @@
 			[attacker,attackerNotParticipating] = game.filterFleet(attackerFull, battleType, 'attacker', options.attacker);
 			[defender, defenderNotParticipating] = game.filterFleet(defenderFull, battleType, 'defender', options.defender);
 
+			
+
 			game.fillOutFleet(attacker, battleType,  options.attacker);
 			game.fillOutFleet(defender, battleType,  options.defender);
+
+			// print(defender)
+			// print(defenderNotParticipating)
 
 			var infiniteCondition = (
 				(options.attacker.duraniumArmor || options.attacker.copy.duraniumArmorCopy) &&
@@ -3681,43 +3537,78 @@
 				var attackerPass = false;
 				var defenderPass = false;
 
-				const usedAttackerNotParticipating = cloneFleet(attackerNotParticipating);
-				const usedDefenderNotParticipating = cloneFleet(defenderNotParticipating);
+				var passes = {
+					attacker: false,
+					defender: false,
+				}
 
-				state.turn = state.turn || 'attacker';
+
+				const notParticipatingClone = {
+					attacker: cloneFleet(attackerNotParticipating),
+					defender: cloneFleet(defenderNotParticipating)
+				}
+				// const usedAttackerNotParticipating = cloneFleet(attackerNotParticipating);
+				// const usedDefenderNotParticipating = cloneFleet(defenderNotParticipating);
+
+				state.turn = game.BattleSide.attacker;
 				var loops = 0
 				while (!(attackerPass && defenderPass) && loops<10000){
 					loops++;
-					if (state.turn === 'attacker'){
-						var attackerAbilities=[];
+					const outputA = oneSide(game.BattleSide.attacker, game.BattleSide.defender);
+					if (outputA){
+						return outputA
+					}
+					
+
+					if (passes.attacker && passes.defender) { break;}
+					
+					const outputD = oneSide(game.BattleSide.defender, game.BattleSide.attacker,);
+					if (outputD){
+						return outputD
+					}
+					
+				}
+
+				function oneSide(battleSide, otherSide){
+					if (state.turn === battleSide){
+						var abilities=[];
 						for (var i = 0; i < activations.length; i++) {
 							
-							if (activations[i].condition(undefined, game.BattleSide.attacker, battleType, state, accumulation, options) && checkTiming(state.timing, activations[i].timing)){
+							if (activations[i].condition(undefined, battleSide, battleType, state, accumulation, options) && checkTiming(state.timing, activations[i].timing)){
 								
-								attackerAbilities.push(activations[i]);
+								abilities.push(activations[i]);
 							}
 							
 						}
 						const abilityToUnit = new Map();
-						for (var i = 0; i < state.attacker.length; i++) {
-							const unit = state.attacker[i];
+						for (var i = 0; i < state[battleSide].length; i++) {
+							const unit = state[battleSide][i];
+							
 							for (var j = 0; j < unit.abilities.length; j++) {
 								const abilityName = unit.abilities[j];
 								const ability = continuousUnitAbilities[abilityName];
+								
+								
 								if 	(ability && 
 									 
 									checkTiming(state.timing, ability.timing) && 
 									!unit.flagPointers.some(item => item.name === abilityName) &&
-									ability.condition(unit, game.BattleSide.attacker, battleType, state, accumulation, options)
+									ability.condition(unit, battleSide, battleType, state, accumulation, options)
 								){
-									abilityToUnit.set(ability,unit);
-									attackerAbilities.push(ability);
+									const abilityTemp = {
+										name: ability.name,
+										effect: ability.effect,
+										priority: typeof ability.priority === 'function' ?  ability.priority(unit, battleSide, battleType, state, accumulation, options) : ability.priority,
+										newUnitEffect: ability.newUnitEffect,
+									}
+									abilityToUnit.set(abilityTemp,unit);
+									abilities.push(abilityTemp);
 								}
 							}
 						}
 
-						for (var i = 0; i < usedAttackerNotParticipating.length; i++) {
-							const unit = usedAttackerNotParticipating[i];
+						for (var i = 0; i < notParticipatingClone[battleSide].length; i++) {
+							const unit = notParticipatingClone[battleSide][i];
 
 							for (var j = 0; j < unit.abilities.length; j++) {
 								const abilityName = unit.abilities[j];
@@ -3727,114 +3618,38 @@
 									 
 									checkTiming(state.timing, ability.timing, true) && 
 									!unit.flagPointers.some(item => item.name === abilityName) &&
-									ability.condition(unit, game.BattleSide.attacker, battleType, state, accumulation, options)
+									ability.condition(unit, battleSide, battleType, state, accumulation, options)
 								){
 									abilityToUnit.set(ability,unit)
-									attackerAbilities.push(ability);
+									abilities.push(ability);
 								}
 							}
 						}
 
-						var attackerAbility = attackerAbilities.sort((a, b) => b.priority - a.priority)[0];
-						if (attackerAbility) {
+						var finalAbility = abilities.sort((a, b) => b.priority - a.priority)[0];
+						
+						if (finalAbility) {
 
 							
 							
 							// const output = attackerAbility.effect(state.attacker,state.defender, 'attacker', battleType, state.resources.attacker, state.flags.attacker, state.flags.defender, options, abilityToUnit.get(attackerAbility), state, accumulation);
 
-							const output = attackerAbility.effect(abilityToUnit.get(attackerAbility), game.BattleSide.attacker, battleType, state, accumulation, options);
+							const output = finalAbility.effect(abilityToUnit.get(finalAbility), battleSide, battleType, state, accumulation, options, notParticipatingClone);
 
-							attackerPass=false;
-							defenderPass = false;
-							state.turn = 'defender';
+							passes[battleSide] = false;
+							passes[otherSide] = false;
+							state.turn = otherSide;
 
 							if (output){
 								return output
 							}
 							
 						} else {
-							attackerPass=true;
-							state.turn = 'defender';
+							passes[battleSide] = true;
+							state.turn = otherSide;
 						}
 						// print(state.attacker[0].flagPointers[0] === state.flags.defender[1]);
 						// print(state.flags.defender);
-					}
-
-					if (attackerPass && defenderPass) { break;}
-					
-					if (state.turn === 'defender'){
-						var defenderAbilities=[];
-						for (var i = 0; i < activations.length; i++) {
-							if (activations[i].condition(undefined, game.BattleSide.defender, battleType, state, accumulation, options) && checkTiming(state.timing, activations[i].timing)){
-								// print(activations[i].name);
-								// print(flags.defender);
-								defenderAbilities.push(activations[i]);
-							}
-							
-						}
-
-						const abilityToUnit = new Map();
-						for (var i = 0; i < state.defender.length; i++) {
-							const unit = state.defender[i];
-							for (var j = 0; j < unit.abilities.length; j++) {
-								const abilityName = unit.abilities[j];
-								const ability = continuousUnitAbilities[abilityName];
-								
-
-								
-								
-								if 	(ability && 
-									checkTiming(state.timing, ability.timing) &&
-									!unit.flagPointers.some(item => item.name === abilityName) &&
-									ability.condition(unit, game.BattleSide.defender, battleType, state, accumulation, options)
-								){
-									
-									abilityToUnit.set(ability,unit);
-									defenderAbilities.push(ability);
-								}
-							}
-						}
-						for (var i = 0; i < usedDefenderNotParticipating.length; i++) {
-							const unit = usedDefenderNotParticipating[i];
-							for (var j = 0; j < unit.abilities.length; j++) {
-								const abilityName = unit.abilities[j];
-								const ability = continuousUnitAbilities[abilityName];
-								if 	(ability &&
-									
-									checkTiming(state.timing, ability.timing, true) &&
-									!unit.flagPointers.some(item => item.name === abilityName) &&
-									ability.condition(unit, game.BattleSide.defender, battleType, state, accumulation, options)
-								){
-									abilityToUnit.set(ability,unit);
-									defenderAbilities.push(ability);
-								}
-							}
-						}
-
-						var defenderAbility = defenderAbilities.sort((a, b) => b.priority - a.priority)[0];
-						if (defenderAbility) {
-
-
-							// const output = defenderAbility.effect(state.defender,state.attacker, 'defender', battleType, state.resources.defender, state.flags.defender, state.flags.attacker, options, abilityToUnit.get(defenderAbility), state, accumulation);
-
-							const output = defenderAbility.effect(abilityToUnit.get(defenderAbility), game.BattleSide.defender, battleType, state, accumulation, options);
-
-							
-
-							attackerPass = false;
-							defenderPass = false;
-							state.turn = 'defender';
-
-							if (output){
-								return output
-							}
-
-							state.turn = 'attacker';
-
-						} else {
-							defenderPass=true;
-							state.turn = 'attacker';
-						}
 					}
 				}
 				
@@ -3853,7 +3668,7 @@
 				
 				var outcome = [[1], [], [], false];
 				switch (state.timing) {
-					case "beforeCombat":
+					case "beforeEverything":
 
 						var output = abilityPassing(state, battleType, accumulations);
 						if (output){
@@ -3871,38 +3686,31 @@
 
 							// if (state.substep === 0){
 
-								const filter = function(unit){
-									return !unit.notInSystem || unit.abilities.includes("deepSpaceCannon");
-								}
+								
 
-								const attackerFull = state.attacker.concat(attackerNotParticipating).filter(filter);
-								const defenderFull = state.defender.concat(defenderNotParticipating).filter(filter);
+								const attackerFull = state.attacker.concat(attackerNotParticipating)
+								const defenderFull = state.defender.concat(defenderNotParticipating)
+
+								
 
 								const [attackerTransitions3D,attackerDelayedSpend] = getSpaceCannonTransition(
 									attackerFull, 
 									defenderFull, 
-									'attacker', 
+									game.BattleSide.attacker,
 									battleType, 
-									state.resources.attacker, 
-									state.resources.defender,
-									state.poles.attacker,
-									state.poles.defender,
-									state.flags.attacker, 
-									options.attacker,
-									options.defender,
+									state, 
+									accumulations, 
+									options,
 								);
+								
 								const [defenderTransitions3D,defenderDelayedSpend]  =  getSpaceCannonTransition(
 									defenderFull,
 									attackerFull, 
-									'defender', 
+									game.BattleSide.defender,
 									battleType, 
-									state.resources.defender, 
-									state.resources.attacker,
-									state.poles.defender,
-									state.poles.attacker,
-									state.flags.defender, 
-									options.defender,
-									options.attacker,
+									state, 
+									accumulations, 
+									options,
 								);
 
 								
@@ -3925,9 +3733,30 @@
 									}
 								}
 
+								var attackerSoftPredicate = undefined;
+								var defenderSoftPredicate = undefined;
+								if (state.resources.attacker.converge?.total > 0){
+									defenderSoftPredicate = function(unitIn){
+									
+										return unitIn.type !== game.UnitType.Fighter && unitIn.typeShip
+									}
+									// state.resources.attacker.converge.total -= 1;
+									delayedSpend.attacker.converge = (delayedSpend.attacker.converge || 0) + 1;
+								}
+								if (state.resources.defender.converge?.total > 0){
+									attackerSoftPredicate = function(unitIn){
+									
+										return unitIn.type !== game.UnitType.Fighter && unitIn.typeShip
+									}
+									delayedSpend.defender.converge = (delayedSpend.defender.converge || 0) + 1;
+								}
+
 								
 								
-								outcome = matrixToStates(state, attackerTransitions3D,  defenderTransitions3D, undefined, polesToAdd, delayedSpend, accumulations, game.ThrowType.SpaceCannon, battleType,  options, elapsedMili);
+								outcome = matrixToStates(state, attackerTransitions3D,  defenderTransitions3D, undefined, polesToAdd, delayedSpend, accumulations, game.ThrowType.SpaceCannon, battleType,  options, elapsedMili, {
+									attackerSoftPredicate: attackerSoftPredicate,
+									defenderSoftPredicate: defenderSoftPredicate,
+								});
 
 							// }
 
@@ -3946,24 +3775,21 @@
 						if (!state.poles.attacker.bombardment && battleType === 'Ground'){
 
 							const filter = function(unit){
-								return !unit.notInSystem;
+								return !unit.notActiveSystem;
 							}
 
 							const attackerFull = state.attacker.concat(attackerNotParticipating).filter(filter);
 							const defenderFull = state.defender.concat(defenderNotParticipating);
 
+							
 							const [attackerTransitions3D,attackerDelayedSpend] = getBombardmentTransition(
 								attackerFull, 
 								defenderFull, 
-								'attacker', 
+								game.BattleSide.attacker,
 								battleType, 
-								state.resources.attacker, 
-								state.resources.defender,
-								state.poles.attacker,
-								state.poles.defender,
-								state.flags.attacker, 
-								options.attacker,
-								options.defender,
+								state, 
+								accumulations, 
+								options,
 							);
 							const defenderTransitions3D  =  [[[1]]];
 
@@ -4015,7 +3841,7 @@
 						if (!state.poles.defender.spaceCannonDefense && battleType === 'Ground'){
 
 							const filter = function(unit){
-								return !unit.notInSystem && unit.planet;
+								return unit.presentPlanet;
 							}
 
 							const attackerFull = state.attacker.concat(attackerNotParticipating);
@@ -4024,19 +3850,16 @@
 							const attackerTransitions3D = [[[1]]];
 							
 
+							
 							const [defenderTransitions3D,defenderDelayedSpend]  =  getSpaceCannonTransition(
-									defenderFull,
-									attackerFull, 
-									'defender', 
-									battleType, 
-									state.resources.defender, 
-									state.resources.attacker,
-									state.poles.defender,
-									state.poles.attacker,
-									state.flags.defender, 
-									options.defender,
-									options.attacker,
-								);
+								defenderFull,
+								attackerFull, 
+								game.BattleSide.defender,
+								battleType, 
+								state, 
+								accumulations, 
+								options,
+							);
 
 							
 							
@@ -4053,10 +3876,30 @@
 								}
 							};
 
-							
-							
-							outcome = matrixToStates(state, attackerTransitions3D,  defenderTransitions3D, undefined, polesToAdd, delayedSpend, accumulations,  game.ThrowType.SpaceCannon, battleType, options, elapsedMili);
+							var attackerSoftPredicate = undefined;
+							var defenderSoftPredicate = undefined;
+							if (state.resources.attacker.converge?.total > 0){
+								defenderSoftPredicate = function(unitIn){
+								
+									return unitIn.type === game.UnitType.Mech;
+								}
+								
+								delayedSpend.attacker.converge = (delayedSpend.attacker.converge || 0) + 1;
+							}
+							if (state.resources.defender.converge?.total > 0){
+								attackerSoftPredicate = function(unitIn){
+								
+									return unitIn.type === game.UnitType.Mech;
+								}
+								delayedSpend.defender.converge = (delayedSpend.defender.converge || 0) + 1;
+							}
 
+							
+							
+							outcome = matrixToStates(state, attackerTransitions3D,  defenderTransitions3D, undefined, polesToAdd, delayedSpend, accumulations,  game.ThrowType.SpaceCannon, battleType, options, elapsedMili, {
+									attackerSoftPredicate: attackerSoftPredicate,
+									defenderSoftPredicate: defenderSoftPredicate,
+							});
 							
 
 							return outcome;
@@ -4066,25 +3909,31 @@
 
 						
 						
+
+						
+
+						state.timing = 'beforeCombat';
+						break;
+
+					case "beforeCombat":
+						var output = abilityPassing(state, battleType, accumulations);
+						if (output){
+
+							return output;
+						}
 
 						state.terminal = (fleetLength(state.attacker) === 0 || fleetLength(state.defender) === 0);
 						if (state.terminal){
 							state.attacker = state.attacker.filter(obj => !obj.leaveEarly);
 							state.defender = state.defender.filter(obj => !obj.leaveEarly);
-
-							// if (fleetLength(state.attacker)=== 0){
-							// 	state.attacker = []
-							// }
-							// if (fleetLength(state.defender)=== 0){
-							// 	state.defender = []
-							// }
 							
-							state.poles.attacker.beforeCombatTerminal = 'BCT';
-							state.poles.defender.beforeCombatTerminal = 'BCT';
+							state.poles.attacker.beforeEverythingTerminal = 'BCT';
+							state.poles.defender.beforeEverythingTerminal = 'BCT';
 
 							outcome[3] = true;
 							return outcome;
 						}
+
 
 						state.timing = 'duringCombat';
 						break;
@@ -4129,7 +3978,7 @@
 							const [attackerTransitions3D,attackerDelayedSpend] = getBarrageTransition(
 								state.attacker, 
 								state.defender, 
-								'attacker', 
+								game.BattleSide.attacker,
 								battleType, 
 								state, 
 								accumulations, 
@@ -4138,7 +3987,7 @@
 							const [defenderTransitions3D,defenderDelayedSpend]  =  getBarrageTransition(
 								state.defender,
 								state.attacker,
-								'defender', 
+								game.BattleSide.defender,
 								battleType, 
 								state, 
 								accumulations, 
@@ -4191,14 +4040,14 @@
 								forceAttackerRetreat = true;
 							}
 
-							if ((options.defender.retreat ||  options.defender.ralnelCommander) && !options.defender.notRetreat && battleType === game.BattleType.Space){
+							if ((options.defender.retreat ||  options.defender.ralnelCommander || options.defender.feint) && !options.defender.notRetreat && battleType === game.BattleType.Space){
 								var output = oneSide(game.BattleSide.defender,game.BattleSide.attacker);
 								if (output !== undefined){
 									return output
 								}
 								
 								
-							} else if ((options.attacker.retreat || forceAttackerRetreat || options.attacker.ralnelCommander) && !options.attacker.notRetreat && battleType === game.BattleType.Space){
+							} else if ((options.attacker.retreat || forceAttackerRetreat || options.attacker.ralnelCommander || options.attacker.feint) && !options.attacker.notRetreat && battleType === game.BattleType.Space){
 								var output = oneSide(game.BattleSide.attacker, game.BattleSide.defender);
 								if (output !== undefined){
 									return output
@@ -4214,10 +4063,10 @@
 							state.retreat = battleSide;
 
 							
-
+							
 							
 
-							if (options[battleSide].ralnelCommander){
+							if (options[battleSide].ralnelCommander || options[battleSide].feint){
 
 								var deadUnits = {
 									attacker : [],
@@ -4231,12 +4080,12 @@
 								var count = 0;
 								for (var k=0; k < state[battleSide].length && count < 2; k++){
 									const unit = state[battleSide][k];
-									if (!unit.retreated && !unit.isDamageGhost && !unit.notInSystem && (unit.move !== undefined || didRetreatEarly) &&
+									if (!unit.retreated && !unit.isDamageGhost && !unit.notActiveSystem && (unit.move !== undefined || didRetreatEarly || options[battleSide].feint) &&
 										
 										((didRetreatEarly && unit.retreatEarly || (!didRetreatEarly)))){
 
 										
-										if (!didRetreatEarly || unit.move !== undefined){
+										if ((!didRetreatEarly || unit.move !== undefined) && !options[battleSide].feint){
 											count++;
 										}
 
@@ -4268,7 +4117,7 @@
 
 									
 									
-									var [transitionArray, newStatesArray, , rewardsArray]=resolveDead2(state, deadUnits.attacker, deadUnits.defender, reward, battleType, options, true);
+									var [transitionArray, newStatesArray, , rewardsArray]=resolveDead2(state, deadUnits.attacker, deadUnits.defender, reward, battleType, options, {startKey: true});
 
 									for (const newState of newStatesArray){
 										newState.flags[battleSide].push({
@@ -4291,7 +4140,7 @@
 
 							}
 
-							if (state.resources[otherSide].intercept && state.resources[otherSide].intercept.total > 0){
+							if (state.resources[otherSide].intercept?.total > 0){
 								state.flags[battleSide].push({
 									name: 'intercept',
 									shortType: 'INC',
@@ -4332,33 +4181,26 @@
 							const [attackerTransitions3D,attackerDelayedSpend] = computeFleetTransitionsWrapper(
 								state.attacker,
 								state.defender,
-								'attacker',
-								battleType,
-								state.resources.attacker,
-								state.resources.defender,
-								state.poles.attacker,
-								state.poles.defender,
 								game.ThrowType.Battle,
-								state.flags.attacker,
-								options.attacker,
-								options.defender,
+								game.BattleSide.attacker,
+								battleType,
+								state,
+								accumulations,
+								options,
 								false,
 								defenderThun,
 							)
 							if (defenderThun){
-								[attackerTransitions3DNoThun,attackerDelayedSpendThun] = computeFleetTransitionsWrapper(
+								[attackerTransitions3DNoThun,attackerDelayedSpendThun] = 
+								computeFleetTransitionsWrapper(
 								state.attacker,
 								state.defender,
-								'attacker',
-								battleType,
-								state.resources.attacker,
-								state.resources.defender,
-								state.poles.attacker,
-								state.poles.defender,
 								game.ThrowType.Battle,
-								state.flags.attacker,
-								options.attacker,
-								options.defender,
+								game.BattleSide.attacker,
+								battleType,
+								state,
+								accumulations,
+								options,
 								)
 							}
 
@@ -4373,33 +4215,26 @@
 							const [defenderTransitions3D,defenderDelayedSpend] = computeFleetTransitionsWrapper(
 								state.defender,
 								state.attacker,
-								'defender',
-								battleType,
-								state.resources.defender,
-								state.resources.attacker,
-								state.poles.defender,
-								state.poles.attacker,
 								game.ThrowType.Battle,
-								state.flags.defender,
-								options.defender,
-								options.attacker,
+								game.BattleSide.defender,
+								battleType,
+								state,
+								accumulations,
+								options,
 								false,
 								attackerThun,
 							)
+							
 							if (attackerThun){
 								[defenderTransitions3DNoThun,defenderDelayedSpendThun] = computeFleetTransitionsWrapper(
 								state.defender,
 								state.attacker,
-								'defender',
-								battleType,
-								state.resources.defender,
-								state.resources.attacker,
-								state.poles.defender,
-								state.poles.attacker,
 								game.ThrowType.Battle,
-								state.flags.defender,
-								options.defender,
-								options.attacker,
+								game.BattleSide.defender,
+								battleType,
+								state,
+								accumulations,
+								options,
 								)
 							}
 
@@ -4435,7 +4270,10 @@
 
 							
 
-							outcome = matrixToStates(state, attackerTransitions3D,  defenderTransitions3D, flagsToAdd, polesToAdd, delayedSpend, accumulations, game.ThrowType.Battle, battleType,  options, elapsedMili, 1, attackerTransitions3DNoThun,defenderTransitions3DNoThun,delayedSpendThun);
+							outcome = matrixToStates(state, attackerTransitions3D,  defenderTransitions3D, flagsToAdd, polesToAdd, delayedSpend, accumulations, game.ThrowType.Battle, battleType,  options, elapsedMili, {
+								attackerTransitions3DNoThun: attackerTransitions3DNoThun,defenderTransitions3DNoThun: defenderTransitions3DNoThun,
+								delayedSpendThun: delayedSpendThun
+							});
 
 							
 
@@ -4487,7 +4325,7 @@
 								}
 
 								for (const unit of state[state.retreat]){
-									if (!unit.retreated && !unit.notInSystem){
+									if (!unit.retreated && !unit.notActiveSystem){
 										unit.update({retreated:true});
 										if (unit.abilities.includes('ralnelFlagship')){
 											
@@ -4509,7 +4347,7 @@
 
 									var reward = {attacker:{tgsEarned:0, tgsSpent:0}, defender:{tgsEarned:0, tgsSpent:0}, rounds:0};
 									
-									[transitionArray, newStatesArray, , rewardsArray]=resolveDead2(state, deadUnits.attacker, deadUnits.defender, reward, battleType, options, true);
+									[transitionArray, newStatesArray, , rewardsArray]=resolveDead2(state, deadUnits.attacker, deadUnits.defender, reward, battleType, options, {startKey: true});
 
 									
 								}
@@ -4546,6 +4384,7 @@
 										turn: state.turn,
 										terminal: false,
 										retreat: game.BattleSide.attacker,
+										notParticipating: state.notParticipating,
 									}
 
 									opponentRetreat = game.BattleSide.opponent(usedState.retreat);
@@ -4558,7 +4397,7 @@
 										}
 										
 										for (const unit of usedState[usedState.retreat]){
-											if (!unit.retreated && !unit.notInSystem){
+											if (!unit.retreated && !unit.notActiveSystem){
 												unit.update({retreated:true});
 												
 												if (unit.abilities.includes('ralnelFlagship')){
@@ -4579,7 +4418,7 @@
 
 										if (deadUnits.attacker.length > 0 || deadUnits.defender.length > 0){
 									
-											var [exitTransitions, exitStates, , exitRewards]=resolveDead2(usedState, deadUnits.attacker, deadUnits.defender, exitStateReward, battleType, options, true);
+											var [exitTransitions, exitStates, , exitRewards]=resolveDead2(usedState, deadUnits.attacker, deadUnits.defender, exitStateReward, battleType, options, {startKey: true});
 
 											exitInfo = [exitStates, exitRewards,exitTransitions];
 
@@ -4593,7 +4432,7 @@
 										var dead = usedState.attacker;
 										usedState.attacker = [];
 										// print(usedState);
-										var [exitTransitions, exitStates, , exitRewards]= resolveDead2(usedState, dead, [], exitStateReward, battleType, options, true);
+										var [exitTransitions, exitStates, , exitRewards]= resolveDead2(usedState, dead, [], exitStateReward, battleType, options, {startKey: true});
 
 										exitInfo = [exitStates, exitRewards,exitTransitions];
 
@@ -4618,63 +4457,12 @@
 
 					case "endOfRound":
 
-						if (!state.flags.attacker.some(obj => obj.name == 'harrow') && battleType === game.BattleType.Ground && options.attacker.abilities.harrow){
-
-							const filter = function(unit){
-								return !unit.notInSystem && (unit.typeShip || (unit.abilities.includes('l1z1xMech') && unit.notParticipating && battleType === game.BattleType.Ground));
-							}
-
-							const attackerFull = state.attacker.concat(attackerNotParticipating).filter(filter);
-							const defenderFull = state.defender.concat(defenderNotParticipating);
-
-							const attackerTransitions3D  = getBombardmentTransition(attackerFull, defenderFull, 'attacker', battleType, state.resources.attacker, state.resources.defender, state.flags.attacker, options.attacker);
-							const defenderTransitions3D  =  [[[1]]];
-
-							
-
-							
-							
-
-					
-
-							var flagsToAdd = {attacker:undefined, defender:undefined};
-							flagsToAdd.attacker = {
-								name: 'harrow',
-								shortType: 'HAR',
-								duration: 1,
-							};
-							var polesToAdd = {};
-
-							
-							
-							outcome = matrixToStates(state, attackerTransitions3D,  defenderTransitions3D,  flagsToAdd, polesToAdd, accumulations, game.ThrowType.Bombardment, battleType,  options, elapsedMili);
-
-							
-
-							return outcome;
-						}
-
-						var ralNelCountAttacker = 2*state.attacker.filter(obj => obj.abilities.includes('ralnelMech') && obj.planet && !obj.notInSystem && !obj.invisible).length;
-						var ralNelCountDefender = 2*state.defender.filter(obj => obj.abilities.includes('ralnelMech') && obj.planet && !obj.notInSystem && !obj.invisible).length;
-
 						
 
-						if ((ralNelCountAttacker > 0 || ralNelCountDefender > 0) && battleType === game.BattleType.Ground){
-							for (var i = 0; i < state.attacker.length && ralNelCountAttacker > 0; i ++){
-								const unit = state.attacker[i];
-								if (unit.notParticipating && unit.typeGroundForce && unit.planet){
-									unit.update({notParticipating: false, notInSystem:false, immune:false, invisible:false, passive:false});
-									ralNelCountAttacker--;
-								}
-							}
+						var output = abilityPassing(state, battleType, accumulations);
+						if (output){
 
-							for (var i = 0; i < state.defender.length && ralNelCountDefender > 0; i ++){
-								const unit = state.defender[i];
-								if (unit.notParticipating && unit.typeGroundForce && unit.planet){
-									unit.update({notParticipating: false, notInSystem:false, immune:false, invisible:false, passive:false});
-									ralNelCountDefender--;
-								}
-							}
+							return output;
 						}
 
 						state.timing = 'cleanup';						
@@ -4692,19 +4480,47 @@
 						state.retreat = false;
 
 						
-						for (var flag of state.flags.attacker) {
-							if (flag.duration > 0){
-								flag.duration--;
-							}
-						}
-						state.flags.attacker = state.flags.attacker.filter(flag => flag.duration !== 0);
+						// for (var flag of state.flags.attacker) {
+						// 	if (flag.duration > 0){
+						// 		flag.duration--;
+						// 	}
+						// }
+						// state.flags.attacker = state.flags.attacker.filter(flag => flag.duration !== 0);
 
-						for (var flag of state.flags.defender) {
-							if (flag.duration > 0){
+						// for (var flag of state.flags.defender) {
+						// 	if (flag.duration > 0){
+						// 		flag.duration--;
+						// 	}
+						// }
+						state.flags.defender = state.flags.defender.filter(flag => flag.duration !== 0);
+
+						for (let i = state.flags.attacker.length - 1; i >= 0; i--) {
+							const flag = state.flags.attacker[i];
+							if (flag.duration > 0) {
 								flag.duration--;
 							}
+							if (flag.duration === 0) {
+								if (flag.unitPointer){
+									const idx = flag.unitPointer.flagPointers.indexOf(flag)
+									flag.unitPointer.flagPointers.splice(idx,1);
+								}
+								state.flags.attacker.splice(i, 1);
+							}
 						}
-						state.flags.defender = state.flags.defender.filter(flag => flag.duration !== 0);
+
+						for (let i = state.flags.defender.length - 1; i >= 0; i--) {
+							const flag = state.flags.defender[i];
+							if (flag.duration > 0) {
+								flag.duration--;
+							}
+							if (flag.duration === 0) {
+								if (flag.unitPointer){
+									const idx = flag.unitPointer.flagPointers.indexOf(flag)
+									flag.unitPointer.flagPointers.splice(idx,1);
+								}
+								state.flags.defender.splice(i, 1);
+							}
+						}
 						
 
 						state.terminal = (fleetLength(state.attacker) === 0 || fleetLength(state.defender) === 0);
@@ -4907,8 +4723,8 @@
 
 						
 						const simplifiedState = {
-							attacker: state.attacker?.map(a => ({ shortType: a.shortType, survived: a.retreated })) || [],
-							defender: state.defender?.map(d => ({ shortType: d.shortType, survived: d.retreated })) || [],
+							attacker: state.attacker?.map(a => ({ shortType: a.shortType, survived: a.invisible && a.immune })) || [],
+							defender: state.defender?.map(d => ({ shortType: d.shortType, survived: d.invisible && d.immune })) || [],
 							timing: state.timing,
 							resources: state.resources,
 							rewards: [],
@@ -5133,7 +4949,7 @@
 					defender: {}
 				},
 				startKey: buildStateKey(attacker, defender, resources, flags, this.poles),
-				timing: 'beforeCombat',
+				timing: 'beforeEverything',
 				prob: 1,
 				turn: 'attacker',
 				
@@ -5141,6 +4957,11 @@
 				
 				terminal: false,
 				retreat: false,
+				notParticipating: {
+					attacker: cloneFleet(attackerNotParticipating),
+					defender: cloneFleet(defenderNotParticipating),
+				}
+
 				
 			}
 			// print(startState.attacker);
@@ -5387,81 +5208,7 @@
 			return [[result, finalAttacker, finalDefender], [resultSurvived, finalAttackerSurvived, finalDefenderSurvived], finalAccumulations];
 		}
 
-		// function computeUnitTransitions2(unit, throwType, modifier, modifierRoll, reroll, thisSideOptions, ambush){
-		// 	const [result,plasmaViable, _, __, ___] = computeUnitTransitions3(unit, throwType, modifier, modifierRoll, reroll, thisSideOptions, ambush);
-		// 	return [result,plasmaViable];
-		// }
-
-		// function bestUnitCalcStats(unit, throwType, modifier, modifierRoll, reroll, thisSideOptions){
-		// 	const [_,__, singleDie, rerolled, max] = computeUnitTransitions3(unit, throwType, modifier, modifierRoll, reroll, thisSideOptions);
-
-			
-		// 	const newModifier = 
-		// 		function (unitIn) {
-		// 			return modifier(unitIn) + 1;
-		// 		};
-				
-
-		// 	const [___,____,newSingleDie,_____,______] = computeUnitTransitions3(unit, throwType, newModifier, modifierRoll, reroll, thisSideOptions);
-
-		// 	return [singleDie, newSingleDie.map((num, index) => num - singleDie[index]), rerolled, max];
-		// }
-
-		// function computeUnitTransitions3(unit, throwType, modifier, modifierRoll, reroll, thisSideOptions, ambush) {
-		// 	var battleValue = unit[game.ThrowValues[throwType]];
-		// 	var diceCount = unit[game.ThrowDice[throwType]] + (unit.galvanized ? 1 : 0);
-		// 	var modifierFunction = function (unit) {
-		// 		return unit.isDamageGhost || ambush ? 0 : typeof modifier === 'function' ? modifier(unit) : modifier;
-		// 	};
-		// 	var modifierRollFunction = function (unit) {
-		// 		return unit.isDamageGhost || ambush ? 0 : typeof modifierRoll === 'function' ? modifierRoll(unit) : modifierRoll;
-		// 	};
-		// 	var rerollFunction = function (unit) {
-		// 		return unit.isDamageGhost || ambush ? false : typeof reroll === 'function' ? reroll(unit) : reroll;
-		// 	};
-		// 	var singleDie = [];
-		// 	var diceRolls= ambush ? 1 : diceCount + modifierRollFunction(unit);
-		// 	var oneRollMiss = Math.max(Math.min((battleValue - 1 - modifierFunction(unit)) / game.dieSides, 1), 0);
-
-		// 	var max = battleValue - 1 - modifierFunction(unit);
-
-		// 	if (diceRolls===0) return [[1], false];
-			
-		// 	singleDie.push(oneRollMiss)
-		// 	singleDie.push( 1 - singleDie[0]);
-
-
-
-		// 	if (rerollFunction(unit)){
-				
-		// 		var transition = singleDie.map((num, index) => {
-		// 			if (index === 0) {
-		// 				return num * singleDie[0];
-		// 			} else {
-		// 				return num * (singleDie[0]+1);
-		// 			}
-		// 		});
-				
-		// 	}else {
-		// 		var transition = singleDie;
-		// 	}
-
-		// 	const plasmaViable = battleValue - modifierFunction(unit) <= 7;
-
-		// 	// for the crown of thalnos, add a 0.1 at the end, and subtract 0.1 from the old end
-		// 	// for plasma scoring, output wether this unit would benefit, then split the units into benefit vs no benefit, the benefits all slideMultiply, then shift over by one, and add the last to the end i.e. [0.25,0.5,0.25] to [0,0.25,0.5+0.25]
-			
-		// 	var result = transition;
-		// 	for (var i = 1; i < diceRolls; i++) {
-		// 		result = slideMultiply(result, singleDie);
-		// 	}
-			
-		// 	while(result[result.length-1] === 0){ // While the last element is a 0,
-		// 		result.pop();                  // Remove that last element
-		// 	}
-		// 	return [result,plasmaViable, singleDie, rerollFunction(unit), max];
-		// }
-
+		
 		
 
 
@@ -5537,317 +5284,24 @@
 
 
 
-		// function getBoostFunctions(fleet, opponentFleet, battleSide, battleType, thisSideResources, throwType, thisSideFlags, thisSideOptions){
-
-		// 	const basicUnitFunction = function (unitIn) {
-		// 						return 0;
-		// 					};
-		// 	var boosts = basicUnitFunction;
-		// 	var rollBoosts = basicUnitFunction;
-
-		// 	var rerolls = function (unitIn) {
-		// 			return false;
-		// 		};
-
-		// 	var rollBoostChoseUnit=[];
-		// 	var boostChoseUnit=[];
-			
-		// 	var rerollDone = false;
-			
-		// 	for (const flag of thisSideFlags){
-				
-		// 		const rollBoost = activeRollBoosts[flag.name];
-				
-		// 		if (rollBoost){
-		// 			const output = rollBoost.apply(flag.unitPointer, battleType, throwType, thisSideOptions);
-		// 			if (rollBoost.singleUnit){
-		// 				rollBoostChoseUnit.push(compose(basicUnitFunction,output));
-		// 			} else {
-						
-		// 				rollBoosts=compose(rollBoosts, output);
-		// 			}
-					
-		// 		}
-
-		// 		const boost = activeBoosts[flag.name];
-				
-		// 		if (boost){
-		// 			const output = boost.apply(flag.unitPointer, battleType, throwType, thisSideOptions);
-		// 			if (boost.singleUnit){
-		// 				boostChoseUnit.push(compose(basicUnitFunction,output));
-		// 			} else {
-		// 				boosts=compose(boosts, output);
-		// 			}
-					
-		// 		}
-
-		// 		if (!rerollDone){
-		// 			const reroll = activeRerolls[flag.name];
-		// 			if (reroll){
-		// 				const output = reroll.apply(flag.unitPointer, battleType, throwType, thisSideOptions);
-		// 				rerolls=composeRerolls(rerolls, output);
-
-		// 				if (output === true){rerollDone = true;} 
-		// 			}
-		// 		}
-				
-
-		// 	}
-		// 	for (const passive of passiveRollBoosts){
-		// 		if (passive.condition(fleet, opponentFleet, battleSide, battleType,thisSideResources,thisSideFlags, thisSideOptions)){
-					
-		// 			const output = passive.apply(undefined, battleType, throwType, thisSideOptions);
-		// 			if (passive.singleUnit){
-		// 				rollBoostChoseUnit.push(compose(basicUnitFunction,output))
-		// 			} else {
-		// 				rollBoosts=compose(rollBoosts, output);
-		// 			}
-		// 		}
-		// 	}
-
-		// 	for (const passive of passiveBoosts){
-		// 		if (passive.condition(fleet, opponentFleet, battleSide, battleType,thisSideResources,thisSideFlags, thisSideOptions)){
-		// 			const output = passive.apply(undefined, battleType, throwType, thisSideOptions);
-		// 			if (passive.singleUnit){
-		// 				boostChoseUnit.push(compose(basicUnitFunction,output))
-		// 			} else {
-		// 				boosts=compose(boosts, output);
-		// 			}
-		// 		}
-		// 	}
-		// 	if (!rerollDone){
-		// 		for (const passive of passiveRerolls){
-		// 			if (passive.condition(fleet, opponentFleet, battleSide, battleType,thisSideResources,thisSideFlags, thisSideOptions)){
-		// 				const output = passive.apply(undefined, battleType, throwType, thisSideOptions);
-		// 				rerolls=composeRerolls(rerolls, output);
-
-		// 				if (output === true){
-		// 					rerollDone = true;
-		// 					break;
-		// 				} 
-		// 			}
-		// 		}
-		// 	}
+		
 
 
 
-			
 
-			
-
-		// 	// if (battleSide === 'attacker'){
-
-		// 	// 	fleet[0].battleValue = 3;
-		// 	// 	fleet[1].battleValue = 4;
-		// 	// 	fleet[1].battleDice = 3;
-		// 	// 	fleet[2].battleValue = 10;
-		// 	// 	fleet[2].battleDice = 4;
-
-		// 	// 	// rollBoostChoseUnit.push(compose(basicUnitFunction,3))
-		// 	// 	boostChoseUnit.push(compose(basicUnitFunction,2))
-
-				
-
-		// 	// }
-
-			
-
-		// 	function getUnitFunction(unit){
-		// 		const [V, D, reroll, max]=bestUnitCalcStats(unit, throwType, boosts, rollBoosts, rerolls, thisSideOptions);
-
-		// 		// print(V);
-		// 		// print(reroll);
-				
-		// 		const eV = V.reduce((sum, p, i) => sum + i * p, 0);
-		// 		const eD = D.reduce((sum, p, i) => sum + i * p, 0);
-		// 		const ki = unit[game.ThrowDice[throwType]];
-		// 		const d0=D[0];
-		// 		const v0=V[0];
-		// 		const output = reroll ? function(n,k){
-		// 			n = Math.min(max,n);
-		// 			return (1+v0+n*d0) * (eV+eD*n)*(ki+k) - (1+v0)*eV*ki
-		// 		} : function(n,k){
-		// 			n = Math.min(max,n);
-		// 			return (eV+eD*n)*(ki+k) - eV*ki
-		// 		}
-
-		// 		return output
-		// 	}
-
-		// 	// if we have both roll modifier and number of rolls modifier, then do a brute-force search for the best distribution
-		// 	if (rollBoostChoseUnit.length > 0 && boostChoseUnit.length > 0) {
-				
-		// 		var unitFunctions = [];
-		// 		for (const unit of fleet){
-
-		// 			unitFunctions.push(getUnitFunction(unit));
-		// 		}
-
-				
-		// 		var bestValue = 0;
-		// 		var bestIndex = 0;
-
-		// 		const total = Math.pow(fleet.length, rollBoostChoseUnit.length + boostChoseUnit.length);
-
-		// 		for (let k = 0; k < total; k++) {
-
-		// 			var map = new Map();
-		// 			for (let i = 0; i < rollBoostChoseUnit.length; i++) {
-		// 				const unitIndex = Math.floor(k / Math.pow(fleet.length, i)) % fleet.length;
-		// 				const unit = fleet[unitIndex];
-		// 				const rollBoostNum = rollBoostChoseUnit[i](unit);
-						
-		// 				var saved = map.get(unitIndex);
-		// 				if (map.get(unitIndex) === undefined){
-		// 					map.set(unitIndex,[0,rollBoostNum]);
-		// 				} else {
-		// 					saved[1] = saved[1] + rollBoostNum;
-		// 					map.set(unitIndex,saved);
-		// 				}
-
-		// 			}
-		// 			for (let i = 0; i < boostChoseUnit.length; i++) {
-		// 				const unitIndex = Math.floor(k / Math.pow(fleet.length, i + rollBoostChoseUnit.length)) % fleet.length;
-		// 				const unit = fleet[unitIndex];
-
-		// 				const boostNum = boostChoseUnit[i](unit);
-						
-		// 				var saved = map.get(unitIndex);
-		// 				if (map.get(unitIndex) === undefined){
-		// 					map.set(unitIndex,[boostNum,0]);
-		// 				} else {
-		// 					saved[0] = saved[0] + boostNum;
-		// 					map.set(unitIndex,saved);
-		// 				}
-
-		// 			}
-		// 			var tot = 0;
-		// 			for (const [key, value] of map.entries()) {
-		// 				tot += unitFunctions[key](value[0],value[1]);
-		// 			}
-		// 			if (tot > bestValue){
-		// 				bestValue = tot;
-		// 				bestIndex = k;
-		// 			}
-		// 		}
-
-				
-			
-		// 		for (let i = 0; i < rollBoostChoseUnit.length; i++) {
-		// 			const unitIndex = Math.floor(bestIndex / Math.pow(fleet.length, i)) % fleet.length;
-		// 			const unit = fleet[unitIndex];
-
-		// 			const output = function (unitIn) {
-		// 						return (unitIn !== unit) ? rollBoostChoseUnit[i](unit) : 0;
-		// 					};
-		// 			rollBoosts=compose(rollBoosts, output);
-		// 		}
-		// 		for (let i = 0; i < boostChoseUnit.length; i++) {
-		// 			const unitIndex = Math.floor(bestIndex / Math.pow(fleet.length, i + rollBoostChoseUnit.length)) % fleet.length;
-		// 			const unit = fleet[unitIndex];
-
-		// 			const output = function (unitIn) {
-		// 					return (unitIn !== unit) ? boostChoseUnit[i](unit) : 0;
-		// 				};
-		// 			boosts=compose(boosts, output);
-
-		// 		}
-		// 	} else if (rollBoostChoseUnit.length > 0){
-				
-		// 		for (let i = 0; i < rollBoostChoseUnit.length; i++) {
-		// 			const rollBoost = rollBoostChoseUnit[i];
-
-		// 			var bestValue = 0;
-		// 			var bestUnit = fleet[0];
-
-		// 			for (const unit of fleet){
-		// 				if (unit.isDamageGhost) continue;
-						
-		// 				const value = getUnitFunction(unit)(0,rollBoost(unit));
-
-		// 				if (value > bestValue){
-		// 					bestValue = value;
-		// 					bestUnit = unit;
-		// 				}
-		// 			}
-					
-
-		// 			const output = function (unitIn) {
-		// 						return (unitIn === bestUnit) ? rollBoost(bestUnit) : 0;
-		// 					};
-
-		// 			rollBoosts=compose(rollBoosts, output);
-
-		// 		}
-		// 	} else if (boostChoseUnit.length > 0){
-		// 		for (let i = 0; i < boostChoseUnit.length; i++) {
-		// 			const boost = boostChoseUnit[i];
-
-		// 			var bestValue = 0;
-		// 			var bestUnit = fleet[0];
-
-					
-
-		// 			for (const unit of fleet){
-		// 				if (unit.isDamageGhost) continue;
-		// 				const value = getUnitFunction(unit)(boost(unit), 0);
-
-		// 				if (value > bestValue){
-		// 					bestValue = value;
-		// 					bestUnit = unit;
-		// 				}
-		// 			}
-
-					
-
-		// 			const output = function (unitIn) {
-		// 						return (unitIn === bestUnit) ? boost(bestUnit) : 0;
-		// 					};
-
-		// 			boosts=compose(boosts, output);
-
-		// 		}
-		// 	}
-				
-			
-
-		// 	return [boosts, rollBoosts, rerolls]
-
-		// 	function compose(boost1, boost2){
-		// 		var boost2IsFunction = typeof boost2 === 'function';
-		// 		const output = 
-		// 			function (unitIn) {
-		// 				return boost1(unitIn) + (boost2IsFunction ? boost2(unitIn) : boost2);
-		// 			};
-		// 		return output;
-		// 	}
-
-		// 	function composeRerolls(boost1, boost2){
-		// 		var boost2IsFunction = typeof boost2 === 'function';
-		// 		const output = 
-		// 			function (unitIn) {
-		// 				return boost1(unitIn) || (boost2IsFunction ? boost2(unitIn) : boost2);
-		// 			};
-		// 		return output;
-		// 	}
 
 		
-		// } 
 
+		function getBoostAndSpecialFunctions(Fleet, opponentFleet, throwType, crown, delayedSpend, battleSide, battleType,  state, accumulation, options, raw = false, afraid = false){
 
-
-
-
-		function getBoostAndSpecialFunctions(unfleet, opponentFleet, battleSide, battleType,  throwType, crown, thisSideResources, delayedSpend,  thisSideFlags,  thisSideOptions, raw = false, afraid = false){
-
-			var fleet = unfleet.filter(obj => !obj.invisible);
+			var fleet = Fleet.filter(obj => !obj.invisible);
 
 			var specials = function (unitIn) {
 					return false;
 				};
 			
 			if (!raw){
-				for (const flag of thisSideFlags){
+				for (const flag of state.flags[battleSide]){
 					if (flag.name === 'l1z1xFlagship'){
 						const output = function(unitIn) {
 							return (unitIn.type === game.UnitType.Dreadnought  || unitIn === flag.unitPointer)
@@ -5859,7 +5313,7 @@
 
 
 			
-
+			
 			
 
 			
@@ -5876,12 +5330,15 @@
 
 			if (!raw) {
 			
-			for (const flag of thisSideFlags){
+			for (const flag of state.flags[battleSide]){
 				
 				const rollBoost = activeRollBoosts[flag.name];
 				
 				if (rollBoost){
-					const output = rollBoost.apply(flag.unitPointer, battleType, throwType, thisSideOptions);
+					
+					// print(flag)
+					
+					const output = rollBoost.apply(flag.unitPointer, battleType, throwType, options[battleSide]);
 					if (rollBoost.singleUnit){
 						rollBoostChoseUnit.push(compose(basicUnitFunction,output));
 					} else {
@@ -5894,7 +5351,7 @@
 				const boost = activeBoosts[flag.name];
 				
 				if (boost){
-					const output = boost.apply(flag.unitPointer, battleType, throwType, thisSideOptions);
+					const output = boost.apply(flag.unitPointer, battleType, throwType, options[battleSide]);
 					if (boost.singleUnit){
 						boostChoseUnit.push(compose(basicUnitFunction,output));
 					} else {
@@ -5907,10 +5364,8 @@
 				const reroll = activeRerolls[flag.name];
 
 				if (reroll){
-					const output = reroll.apply(flag.unitPointer, battleType, throwType, thisSideOptions);
+					const output = reroll.apply(flag.unitPointer, battleType, throwType, options[battleSide]);
 					rerolls=compose(rerolls, output);
-
-					
 				}
 				
 				
@@ -5921,10 +5376,10 @@
 				// print(passive);
 				// print(thisSideOptions);
 				// print(passive.condition(fleet, opponentFleet, battleSide, battleType,thisSideResources,thisSideFlags, thisSideOptions));
-				if (passive.condition(fleet, opponentFleet, battleSide, battleType,thisSideResources,thisSideFlags, thisSideOptions)){
+				if (passive.condition(fleet, throwType, battleSide, battleType, state, accumulation, options, afraid)){
 					
 					
-					const output = passive.apply(battleType, throwType, thisSideOptions);
+					const output = passive.apply(battleType, throwType, delayedSpend, options[battleSide]);
 					if (passive.singleUnit){
 						rollBoostChoseUnit.push(compose(basicUnitFunction,output))
 					} else {
@@ -5934,8 +5389,8 @@
 			}
 
 			for (const passive of passiveBoosts){
-				if (passive.condition(fleet, opponentFleet, battleSide, battleType,thisSideResources,thisSideFlags, thisSideOptions)){
-					const output = passive.apply(battleType, throwType, thisSideOptions);
+				if (passive.condition(fleet, throwType, battleSide, battleType, state, accumulation, options, afraid)){
+					const output = passive.apply(battleType, throwType, delayedSpend, options[battleSide]);
 					if (passive.singleUnit){
 						boostChoseUnit.push(compose(basicUnitFunction,output))
 					} else {
@@ -5945,8 +5400,8 @@
 			}
 			
 			for (const passive of passiveRerolls){
-				if (passive.condition(fleet, opponentFleet, battleSide, battleType, throwType, thisSideResources,thisSideFlags, thisSideOptions, afraid)){
-					const output = passive.apply(battleType, throwType, delayedSpend, thisSideOptions);
+				if (passive.condition(fleet, throwType, battleSide, battleType, state, accumulation, options, afraid)){
+					const output = passive.apply(battleType, throwType, delayedSpend, options[battleSide]);
 					rerolls=compose(rerolls, output);
 
 					
@@ -5955,7 +5410,7 @@
 			
 			}
 
-			if (thisSideResources.meld && thisSideResources.meld.total > 0){
+			if (state.resources[battleSide].meld?.total > 0){
 				// thisSideResources.meld.total -= 1;
 				rollBoostChoseUnit.push('meld');
 			}
@@ -5972,7 +5427,7 @@
 
 
 				
-				const fakeFleet = [unitToFakeUnit(unit, throwType, composeBool(meldTargets,meld), compose(boosts,boost), compose(rollBoosts,rollBoost), rerolls, false, thisSideOptions)];
+				const fakeFleet = [unitToFakeUnit(unit, throwType, composeBool(meldTargets,meld), compose(boosts,boost), compose(rollBoosts,rollBoost), rerolls, false, options[battleSide])];
 				const prob3D = exact(fakeFleet, crown, false, 0);
 				const expectedTotalHits = prob3D.reduce(
 						(sum, row, hn) =>
@@ -6203,35 +5658,7 @@
 
 		
 
-		// function getSpecialUnitFunction(fleet, opponentFleet, battleSide, battleType, thisSideResources, throwType, thisSideFlags, thisSideOptions, raw = false){
-
-		// 	var specials = function (unitIn) {
-		// 			return false;
-		// 		};
-			
-		// 	if (raw) return specials;
-
-		// 	for (const flag of thisSideFlags){
-		// 		if (flag.name === 'l1z1xFlagship'){
-		// 			const output = function(unitIn) {
-		// 				return (unitIn.type === game.UnitType.Dreadnought  || unitIn === flag.unitPointer)
-		// 			}
-		// 			specials = compose(specials, output);
-		// 		}
-		// 	}
-
-		// 	return specials
-
-		// 	function compose(boost1, boost2){
-		// 		var boost2IsFunction = typeof boost2 === 'function';
-		// 		const output = 
-		// 			function (unitIn) {
-		// 				return boost1(unitIn) || (boost2IsFunction ? boost2(unitIn) : boost2);
-		// 			};
-		// 		return output;
-		// 	}
-
-		// }
+		
 
 
 
@@ -6288,29 +5715,34 @@
 
 
 
-		function computeFleetTransitionsWrapper(fleet, opponentFleet, battleSide, battleType, thisSideResources, otherSideResources, thisSidePoles, otherSidePoles, throwType, thisSideFlags, thisSideOptions, otherSideOptions, raw=false, afraid=false){
+		
+
+		function computeFleetTransitionsWrapper(fleet, opponentFleetFull, throwType, battleSide, battleType, state, accumulation, options, raw=false, potentialThundarian=false){
 
 			var delayedSpend = {};
 
 			var filteredFleet = fleet.filter(obj => !obj.passive && obj[game.ThrowValues[throwType]] > 0);
 
+			var otherSide = game.BattleSide.opponent(battleSide);
 
-			const crown = raw ? false : thisSideOptions.crownOfThalnos && throwType === game.ThrowType.Battle && !otherSideResources.warFunding?.total > 0;
-			const plasma = raw ? false : (thisSideOptions.plasmaScoringN || thisSidePoles.plasmaScoringN !== undefined) && (throwType === game.ThrowType.Barrage || throwType === game.ThrowType.Bombardment || throwType === game.ThrowType.SpaceCannon);
+			const crown = raw ? false : options[battleSide].crownOfThalnos && throwType === game.ThrowType.Battle && !state.resources[otherSide].warFunding?.total > 0;
+			const plasma = raw ? false : (options[battleSide].plasmaScoringN || state.poles[battleSide].plasmaScoringNOwns !== undefined) && (throwType === game.ThrowType.Barrage || throwType === game.ThrowType.Bombardment || throwType === game.ThrowType.SpaceCannon);
 			var hacans = 0;
-			if (thisSideResources.tgs && !raw && !afraid){
+			if (state.resources[battleSide].tgs && !raw && !potentialThundarian){
 				hacans = Math.min(fleet.reduce(
 				(sum, obj) => sum + (obj.abilities.includes("hacanFlagship") ? 1 : 0), 0
-				), thisSideResources.tgs.total);
+				), state.resources[battleSide].tgs.total);
 			}
 
 
 			
 
 			
-			// const specialUnitFunction = getSpecialUnitFunction(fleet, opponentFleet, battleSide, battleType, thisSideResources, throwType, thisSideFlags, thisSideOptions, raw);
+			
 
-			const [boostFunction, boostRollFunction, rerollFunction, meldFunction, specialUnitFunction] = getBoostAndSpecialFunctions(filteredFleet, opponentFleet, battleSide, battleType, throwType, crown, thisSideResources, delayedSpend,  thisSideFlags, thisSideOptions, raw, afraid);
+			
+
+			const [boostFunction, boostRollFunction, rerollFunction, meldFunction, specialUnitFunction] = getBoostAndSpecialFunctions(filteredFleet, opponentFleetFull, throwType, crown, delayedSpend,  battleSide, battleType, state, accumulation, options, raw, potentialThundarian);
 
 			
 			
@@ -6319,10 +5751,10 @@
 			var totalDice=0;
 			var meldUnit;
 			for (const unit of filteredFleet) {
-				const fakeUnit = unitToFakeUnit(unit, throwType, meldFunction, boostFunction, boostRollFunction, rerollFunction, specialUnitFunction, thisSideOptions, raw);
+				const fakeUnit = unitToFakeUnit(unit, throwType, meldFunction, boostFunction, boostRollFunction, rerollFunction, specialUnitFunction, options[battleSide], raw);
 				fakeFleet.push(fakeUnit);
 				totalDice += fakeUnit.dice;
-				if (afraid){
+				if (potentialThundarian){
 					fakeUnit.meld = false;
 				}
 				if (fakeUnit.meld){
@@ -6540,7 +5972,7 @@
 				const cats = dieEntry.catsBV;
 				const R = dieEntry.rerolls || 0;
 				if (R === 0) {
-				return cats.map((cat, idx) => ({ src: 'BV', idx, prob: cat.prob }));
+					return cats.map((cat, idx) => ({ src: 'BV', idx, prob: cat.prob }));
 				}
 
 				let P_miss = 0;
@@ -7355,102 +6787,22 @@
 
 
 
-		// function computeFleetTransitions2(fleet, opponentFleet, battleSide, battleType, thisSideResources, throwType, thisSideFlags, thisSideOptions) {
+		
+
+		function getSpaceCannonTransition(fleetFull, opponentFleetFull, battleSide, battleType, state, accumulation, options) {
+
+		
 			
-		// 	var result = [1];
-		// 	var resultPlasmaViable = [1];
-		// 	var resultSpecial = [1];
-		// 	var resultSpecialPlasmaViable = [1];
-			
+			var otherSide = game.BattleSide.opponent(battleSide);
 
-
-			
-
-		// 	// var A3 = [{pmf: [0.9,0,0, 0.1], spentTgs:[0,0.1]}]
-		// 	// var A2 = [{pmf: [0.4,0,0.6], spentTgs:[0,0.1]}]
-		// 	// var A1 = [{pmf: [0.7, 0.3], spentTgs:[0,0.1]}]
-		// 	// var A0 = []
-
-		// 	// var A3 = []
-		// 	// var A2 = []
-		// 	// var A1 = [{pmf: [0.4, 0.6], spentTgs:[0,1/6]},{pmf: [0.4, 0.6], spentTgs:[0,1/6]}]
-		// 	// var A0 = []
-
-		// 	// const output = completeCalcWithExpectations([A0, A1, A2, A3]);
-		// 	// print(output);
-
-			
-			
-
-		// 	const [boostFunction, boostRollFunction, rerollFunction] = getBoostFunctions(fleet, opponentFleet, battleSide, battleType, thisSideResources, throwType, thisSideFlags, thisSideOptions, false);
-
-
-			
-
-		// 	const specialUnitFunction = getSpecialUnitFunction(fleet, opponentFleet, battleSide, battleType, thisSideResources, throwType, thisSideFlags, thisSideOptions);
-	
-
-
-
-		// 	var actuallyPlasma = thisSideOptions.plasmaScoringC && (throwType === game.ThrowType.SpaceCannon || throwType === game.ThrowType.Bombardment || throwType === game.ThrowType.Barrage);
-			
-		// 	for (var a = 0; a < fleet.length; a++) {
-		// 		var unit = fleet[a];
-		// 		const [thisUnitTransitions,plasmaViable] = computeUnitTransitions2(unit, throwType, boostFunction, boostRollFunction, rerollFunction,thisSideOptions);
-
-
-
-				
-				
-
-		// 		if (specialUnitFunction(unit)){
-		// 			if (plasmaViable && actuallyPlasma){
-		// 				resultSpecialPlasmaViable = slideMultiply(resultSpecialPlasmaViable, thisUnitTransitions);
-		// 			} else {
-		// 				resultSpecial = slideMultiply(resultSpecial, thisUnitTransitions);
-		// 			}
-		// 		} else {
-				
-		// 			if (plasmaViable && actuallyPlasma){
-		// 				resultPlasmaViable = slideMultiply(resultPlasmaViable, thisUnitTransitions);
-		// 			} else {
-		// 				result = slideMultiply(result, thisUnitTransitions);
-		// 			}
-		// 		}
-
-
-				
-		// 	}
-
-		// 	if (actuallyPlasma){
-		// 		resultPlasmaViable.unshift(0);
-		// 		var last = resultPlasmaViable.pop();
-		// 		resultPlasmaViable[resultPlasmaViable.length - 1] += last;
-
-		// 		result = slideMultiply(result, resultPlasmaViable);
-
-		// 		resultSpecialPlasmaViable.unshift(0);
-		// 		last = resultSpecialPlasmaViable.pop();
-		// 		resultSpecialPlasmaViable[resultSpecialPlasmaViable.length - 1] += last;
-
-
-		// 		// not accounting for additional hits from number rolled correctly
-		// 		// not account for rolls that produce multiple hits correclty. maybe (shift by 2 for the units that shift by 2)
-		// 		resultSpecial = slideMultiply(resultSpecial, resultSpecialPlasmaViable);
-
-		// 		// how to implement with hacan + 1
-		// 		// get the expected tgs spent, multiply by prob vector, then shift by 1, add at the end, then subtract by the probability that you only got hits that you don't need to spend for
-		// 	}
-			
-			
-			
-		// 	return [result, resultSpecial];
-		// }
-
-		function getSpaceCannonTransition(fleetFull, opponentFleetFull, battleSide, battleType, thisSideResources, otherSideResources, thisSidePoles, otherSidePoles, thisSideFlags, thisSideOptions, otherSideOptions) {
+			if (options[otherSide].solarFlare && state.timing === "spaceCannonOffense") return [[[[1]]],{}];
 
 			function useSpaceCannon(unit) {
-				return unit.spaceCannonDice !== 0 && !unit.lostSpaceCannon && !unit.notUseSpaceCannon;
+				return unit.spaceCannonDice !== 0 && 
+				!unit.lostSpaceCannon && 
+				!unit.notUseSpaceCannon && 
+				(!options[otherSide].entropicScar || unit.type === undefined) &&
+				(!unit.notActiveSystem || ((unit.abilities.includes("deepSpaceCannon")||options[battleSide].trine) && state.timing === "spaceCannonOffense"));
 			}
 
 			
@@ -7458,11 +6810,11 @@
 			var spaceCannonFleet = fleetFull.filter(useSpaceCannon);
 
 			if (fleetFull.some(obj => obj.abilities.includes('ralnelDestroyer') || obj.abilities.includes('ralnelDestroyerII'))){
-				var destroyers = fleetFull.filter(obj => (obj.abilities.includes('ralnelDestroyer') || obj.abilities.includes('ralnelDestroyerII')) && obj.spaceArea && !obj.notInSystem).sort(
+				var destroyers = fleetFull.filter(obj => (obj.abilities.includes('ralnelDestroyer') || obj.abilities.includes('ralnelDestroyerII')) && obj.presentSpace && !obj.notUseSpaceCannon).sort(
 					(a,b) =>  b.galvanized - a.galvanized
 				);
 				
-				var structures = fleetFull.filter(obj => obj.typeStructure && obj.spaceArea && !obj.notInSystem).sort(
+				var structures = fleetFull.filter(obj => obj.typeStructure && obj.presentSpace && !obj.lostSpaceCannon).sort(
 					(a,b) =>  (b.spaceCannonDice * (11-b.spaceCannonValue)) - (a.spaceCannonDice * (11-a.spaceCannonValue))
 				);
 				
@@ -7486,77 +6838,96 @@
 						
 					}
 				}
-				
+			}
 
-				
+			if (options[battleSide].experimental && state.timing === "spaceCannonOffense" && battleType === game.BattleType.Space){
+				const lowest = fleetFull.reduce((best, obj) => {
+					if (obj.type === game.UnitType.SpaceDock && !obj.notUseSpaceCannon && !obj.lostSpaceCannon && (!best || (obj.spaceCannonDice * (11-obj.spaceCannonValue)) < (best.spaceCannonDice * (11-best.spaceCannonValue)))) {
+						return obj;
+					}
+					return best;
+					}, undefined);
+				if (lowest){
+					const index = spaceCannonFleet.indexOf(lowest);
+					print(spaceCannonFleet)
+
+					const unit = fastShallowCloneUnit(lowest);
+					unit.spaceCannonDice = 3;
+					unit.spaceCannonValue = 5;
+
+					
+					if (index !== -1){
+						spaceCannonFleet.splice(index,1);
+					} 
+					
+					spaceCannonFleet.push(unit)
+				}
+
 			}
 
 			if (spaceCannonFleet.length === 0) return [[[[1]]],{}];
 
 			var output = computeFleetTransitionsWrapper(
-				spaceCannonFleet, 
-				opponentFleetFull, 
-				battleSide, 
-				battleType, 
-				thisSideResources, 
-				otherSideResources,
-				thisSidePoles,
-				otherSidePoles,
-				game.ThrowType.SpaceCannon, 
-				thisSideFlags, 
-				thisSideOptions,
-				otherSideOptions);
+					spaceCannonFleet, 
+					opponentFleetFull, 
+					game.ThrowType.SpaceCannon,
+					battleSide,
+					battleType,
+					state,
+					accumulation,
+					options,
+				)
 			
 			
 			return output;
 
 		}
 
-		function getBombardmentTransition(fleetFull, opponentFleetFull, battleSide, battleType, thisSideResources, otherSideResources, thisSidePoles, otherSidePoles, thisSideFlags, thisSideOptions, otherSideOptions) {
+		function getBombardmentTransition(fleetFull, opponentFleetFull, battleSide, battleType, state, accumulation, options) {
 
+		
+			var otherSide = game.BattleSide.opponent(battleSide);
 			function useBombardment(unit) {
-				return unit.bombardmentDice !== 0 && !unit.lostBombardment && !unit.notUseBombardment;
+				return unit.bombardmentDice !== 0 && !unit.lostBombardment && !unit.notUseBombardment && (!options[otherSide].entropicScar || unit.type === undefined);
 			}
 			
 			var bombardmentFleet = fleetFull.filter(useBombardment);
 
-			var noBombardment = opponentFleetFull.some(obj => 
-				obj.planetaryShield && !obj.notInSystem && obj.planet && !obj.lostPlanetaryShield && !obj.notUsePlanetaryShield);
+			var planetary = opponentFleetFull.some(obj => 
+				obj.planetaryShield && obj.presentPlanet && !obj.lostPlanetaryShield && !obj.notUsePlanetaryShield);
 			// noBombardment=false;
 
-			if (bombardmentFleet.length === 0 || noBombardment) return [[[[1]]],{}];
+			
+
+			if (bombardmentFleet.length === 0 || planetary || options[otherSide].conventions) return [[[[1]]],{}];
 			
 			var output = computeFleetTransitionsWrapper(
-				bombardmentFleet, 
-				opponentFleetFull, 
-				battleSide, 
-				battleType, 
-				thisSideResources, 
-				otherSideResources,
-				thisSidePoles,
-				otherSidePoles,
-				game.ThrowType.Bombardment, 
-				thisSideFlags, 
-				thisSideOptions,
-				otherSideOptions,
-			);
+					bombardmentFleet, 
+					opponentFleetFull, 
+					game.ThrowType.Bombardment,
+					battleSide,
+					battleType,
+					state,
+					accumulation,
+					options,
+				)
 			
 			
 			return output;
 
 		}
 
-		function getBarrageTransition(fleetFull, opponentFleetFull, battleSide, battleType, state, accumulations, options) {
+		function getBarrageTransition(fleetFull, opponentFleetFull, battleSide, battleType, state, accumulation, options) {
 
-			var thisSideOptions = options[battleSide];
+			
 			var otherSide = game.BattleSide.opponent(battleSide);
 			function useBarrage(unit) {
-				return unit.barrageDice !== 0 && !unit.lostBarrage && !unit.notUseBarrage;
+				return unit.barrageDice !== 0 && !unit.lostBarrage && !unit.notUseBarrage && (!options[otherSide].entropicScar || unit.type === undefined);
 			}
 			
 			var barrageFleet = fleetFull.filter(useBarrage);
 
-			if (thisSideOptions.voidArmaments && checkTiming(state.timing, 'barrage')){
+			if (options[battleSide].voidArmaments && checkTiming(state.timing, 'barrage')){
 				barrageFleet.push({
 					type: undefined,
 					barrageValue: 6,
@@ -7568,19 +6939,15 @@
 			if (barrageFleet.length === 0) return [[[[1]]],{}];
 			
 			var output = computeFleetTransitionsWrapper(
-				barrageFleet, 
-				opponentFleetFull, 
-				battleSide, 
-				battleType, 
-				state.resources[battleSide], 
-				state.resources[otherSide],
-				state.poles[battleSide], 
-				state.poles[otherSide],
-				game.ThrowType.Barrage, 
-				state.flags[battleSide], 
-				thisSideOptions,
-				options[otherSide],
-			);
+					barrageFleet, 
+					opponentFleetFull, 
+					game.ThrowType.Barrage,
+					battleSide,
+					battleType,
+					state,
+					accumulation,
+					options,
+				)
 
 			
 
@@ -7861,15 +7228,233 @@
 
 		function initContinuousUnitAbilities(){
 			return {
-				'mentakFlagship': {
+				'blueMech': {
 					
-					timing: 'beforeCombat_',
+					timing: 'beforeEverything',
 					condition: function(unit, battleSide, battleType,  state, accumulation, options){
-						return !unit.notInSystem;
+						// print(unit);
+						
+						return true;
+					},
+					effect: function(unit, battleSide, battleType,  state, accumulation, options){
+
+						const otherSide = game.BattleSide.opponent(battleSide);
+
+						const fakeState = {
+							attacker: state.attacker,
+							defender: state.defender,
+							resources: state.resources,
+							flags: state.flags,
+							poles: state.poles,
+							timing: 'combatRolls',
+							prob: 0,
+
+							terminal: state.terminal,
+							retreat: state.retreat,
+							notParticipating: state.notParticipating,
+
+						}
+
+						var bestUnit = undefined;
+						var bestDiff = -100;
+
+						for (const unitTemp of state[battleSide]){
+							if (unitTemp.capacity !== undefined && !unitTemp.notActiveSystem){
+								const fakeUnit = fastShallowCloneUnit(unitTemp)
+								var output = computeFleetTransitionsWrapper([fakeUnit], fakeState[otherSide], game.ThrowType.Battle, battleSide, battleType, fakeState, accumulation, options);
+								var x0= expectedHits(output[0]);
+
+								fakeUnit.battleDice += 1;
+								output = computeFleetTransitionsWrapper([fakeUnit], fakeState[otherSide], game.ThrowType.Battle, battleSide, battleType, fakeState, accumulation, options);
+								var x1= expectedHits(output[0]);
+
+								if (x1 - x0 > bestDiff){
+									bestUnit = unitTemp;
+									bestDiff = x1 - x0;
+								}
+							}
+						}
+
+						// const lowest = state[battleSide].reduce((best, obj) => {
+						// 	if (obj.battleValue && obj.battleDice > 0 && (!best || obj.battleValue < best.battleValue)){
+						// 		return obj;
+						// 	}
+						// 	return best
+						// }, undefined)
+						
+						
+
+						const flag = {
+							name: 'blueMech',
+							shortType: 'BM',
+							duration: -1,
+							unitPointer: null,
+							side: battleSide,
+							unitSide: battleSide,
+						};
+						
+						state.flags[battleSide].push(flag);
+						unit.flagPointers.push(flag);
+
+						if (bestUnit){
+							bestUnit.flagPointers.push(flag);
+							flag.unitPointer = bestUnit;
+							bestUnit.update({importance : bestUnit.importance + 1})
+						}
+						
+						
+						
+
+						
+						
+
+
+						function expectedHits(probs, hitDims = [0, 1], indices = []) {
+							// Base case: innermost element (a probability value)
+							if (typeof probs === 'number') {
+								const totalHits = hitDims.reduce((sum, dim) => sum + (indices[dim] ?? 0), 0);
+								return probs * totalHits;
+							}
+
+							// Recursive case: dive deeper into the array
+							return probs.reduce(
+								(sum, subArray, i) => sum + expectedHits(subArray, hitDims, [...indices, i]),
+								0
+							);
+						}
+
+						
+
+					},
+					priority:0,
+				},
+
+				'ralnelMech': {
+					
+					timing: 'endOfRound',
+					condition: function(unit, battleSide, battleType,  state, accumulation, options){
+						// print(unit);
+						
+						return !unit.invisible && battleType === game.BattleType.Ground && unit.presentPlanet;
 					},
 					effect: function(unit, battleSide, battleType,  state, accumulation, options){
 
 						// print([unit, battleSide, battleType,  state, accumulation, options])
+						
+						
+
+						const flag = {
+							name: 'ralnelMech',
+							shortType: 'RNM',
+							duration: 1,
+							unitPointer: null,
+							side: battleSide,
+							unitSide: battleSide,
+						};
+						
+						state.flags[battleSide].push(flag);
+						unit.flagPointers.push(flag);
+						flag.unitPointer = unit;
+
+						var count = 2;
+						for (var i = 0; i < state[battleSide].length && count > 0; i ++){
+							const unitTemp = state[battleSide][i];
+							if (unitTemp.notActiveSystem && unitTemp.typeGroundForce && unitTemp.planet){
+								unitTemp.update({notActiveSystem:false, immune:false, invisible:false, passive:false});
+								if (unitTemp.abilities.includes('ralnelMech')){
+									const flagTemp = {
+										name: 'ralnelMech',
+										shortType: 'RNM',
+										duration: 1,
+										unitPointer: null,
+										side: battleSide,
+									};
+									state.flags[battleSide].push(flagTemp);
+									unitTemp.flagPointers.push(flagTemp);
+									flagTemp.unitPointer = unitTemp;
+								}
+								count -= 1;
+							}
+						}
+
+					},
+					
+
+					
+
+					
+
+					
+
+
+					
+					priority:0,
+				},
+				'naazRokhaMechRepair': {
+					
+					timing: 'startOfRound',
+					condition: function(unit, battleSide, battleType,  state, accumulation, options){
+						return !unit.invisible;
+					},
+					effect: function(unit, battleSide, battleType,  state, accumulation, options){
+
+						// print([unit, battleSide, battleType,  state, accumulation, options])
+						
+
+						const flag = {
+							name: 'naazRokhaMechRepair',
+							shortType: 'NRR',
+							duration: 1,
+							unitPointer: null,
+							side: battleSide,
+							unitSide: battleSide,
+							
+						};
+						
+						state.flags[battleSide].push(flag);
+						unit.flagPointers.push(flag);
+						flag.unitPointer = unit;
+
+						// print(state.attacker);
+
+						if (unit.damaged) {
+
+							unit.update({damaged: false});
+
+							if (unit.sustainDamage && !unit.lostSustain && !unit.notUseSustain){
+								const sustain = unit.toDamageGhost()
+								addUnit(state[battleSide], sustain, battleSide, battleType,  state, accumulation, options);
+							}
+						
+						}
+
+						// print(state.attacker);
+						// print('')
+
+					},
+					
+
+					
+
+					
+
+					
+
+
+					
+					priority: function(unit) {
+						return unit.damaged ? 2 : -2;
+					},
+				},
+				'mentakFlagship': {
+					
+					timing: 'beforeEverything_',
+					condition: function(unit, battleSide, battleType,  state, accumulation, options){
+						return !unit.notActiveSystem;
+					},
+					effect: function(unit, battleSide, battleType,  state, accumulation, options){
+
+						
 						const otherSide = game.BattleSide.opponent(battleSide);
 
 						const flag = {
@@ -7878,27 +7463,23 @@
 							duration: -1,
 							unitPointer: null,
 							side: otherSide,
+							unitSide: battleSide,
 							newUnitEffect: this.newUnitEffect,
+							priority: this.priority,
 						};
 						
 						state.flags[otherSide].push(flag);
 						unit.flagPointers.push(flag);
 						flag.unitPointer = unit;
 
-						applyContinuousEffectsOnUnits(state[otherSide], state.flags[otherSide], otherSide, battleType, state.timing, options[otherSide]);
-						
-						
-
-						
-
-						
+						applyContinuousEffectsOnUnits(state[otherSide], otherSide, battleType,  state, accumulation, options);
 					},
 					
 
 					
 
 					terminate: function(unit, battleSide, battleType,  state, accumulation, options){
-
+						// print('trigger')
 						
 						var otherSide = game.BattleSide.opponent(battleSide);
 
@@ -7909,7 +7490,7 @@
 							}
 						}
 
-						applyContinuousEffectsOnUnits(state[otherSide], state.flags[otherSide], otherSide, battleType, state.timing, options[otherSide]);
+						applyContinuousEffectsOnUnits(state[otherSide], otherSide, battleType,  state, accumulation, options);
 
 						game.fillOutFleet(state[otherSide], battleType, options[otherSide]);
 
@@ -7940,12 +7521,13 @@
 					
 					priority:-1,
 				},
+
 				'mentakMech': {
 					
 					timing: 'spaceCannonDefense_',
 					
 					condition: function(unit, battleSide, battleType,  state, accumulation, options){
-						return battleType === 'Ground' && !unit.notInSystem && unit.planet;
+						return battleType === game.BattleType.Ground && unit.presentPlanet;
 					},
 					effect: function(unit, battleSide, battleType,  state, accumulation, options){
 						
@@ -7958,14 +7540,16 @@
 							duration: -1,
 							unitPointer: null,
 							side: otherSide,
+							unitSide: battleSide,
 							newUnitEffect: this.newUnitEffect,
+							priority: this.priority,
 						};
 						
 						state.flags[otherSide].push(flag);
 						unit.flagPointers.push(flag);
 						flag.unitPointer = unit;
 
-						applyContinuousEffectsOnUnits(state[otherSide], state.flags[otherSide], otherSide, battleType, state.timing, options[otherSide]);
+						applyContinuousEffectsOnUnits(state[otherSide], otherSide, battleType,  state, accumulation, options);
 					},
 					terminate: function(unit, battleSide, battleType,  state, accumulation, options){
 
@@ -7977,7 +7561,7 @@
 							}
 						}
 
-						applyContinuousEffectsOnUnits(state[otherSide], state.flags[otherSide], otherSide, battleType, state.timing, options[otherSide]);
+						applyContinuousEffectsOnUnits(state[otherSide], otherSide, battleType,  state, accumulation, options);
 
 						game.fillOutFleet(state[otherSide], battleType, options[otherSide]);
 					
@@ -8002,12 +7586,165 @@
 					},
 					priority:-1,
 				},
+
+				'nekroFlagship': {
+					
+					timing: 'startOfCombat',
+					condition: function(unit, battleSide, battleType,  state, accumulation, options){
+						return unit.presentSpace && battleType===game.BattleType.Space && state.poles[battleSide].nekroFlagship === undefined;
+
+						// && !(state.flags[battleSide].some(item => item.name === 'nekroFlagship'));
+					},
+					effect: function(unit, battleSide, battleType,  state, accumulation, options){
+
+						
+						const otherSide = game.BattleSide.opponent(battleSide);
+
+						state.poles[battleSide].nekroFlagship = 'NKF';
+
+						for (const unitTemp of state[battleSide]){
+							if (unitTemp.typeGroundForce && unitTemp.immune && unitTemp.invisible && unitTemp.passive && !unitTemp.notActiveSystem){
+								unitTemp.update({typeShip: true, immune: false, passive: false, invisible:false})
+							}
+						}
+						
+						
+
+						applyContinuousEffectsOnUnits(state[battleSide], battleSide, battleType,  state, accumulation, options);
+
+						game.fillOutFleet(state[battleSide], battleType, options[battleSide]);
+					},
+					
+
+					
+
+					
+					
+
+
+					
+					priority:10,
+				},
+
+				'purpleMech': {
+					
+					timing: 'beforeCombat',
+					condition: function(unit, battleSide, battleType,  state, accumulation, options){
+						return battleType===game.BattleType.Space && state.poles[battleSide].purpleMechSpace === undefined;
+					},
+					effect: function(unit, battleSide, battleType,  state, accumulation, options){
+
+						
+						
+
+						state.poles[battleSide].purpleMechSpace = 'skip';
+
+						for (const unitTemp of state[battleSide]){
+							if (unitTemp.abilities.includes('purpleMech') && unitTemp.invisible && unitTemp.immune && unitTemp.passive){
+								unitTemp.update({typeShip: true, immune: false, passive: false, invisible:false})
+							}
+						}
+						
+						
+
+						applyContinuousEffectsOnUnits(state[battleSide], battleSide, battleType,  state, accumulation, options);
+
+						game.fillOutFleet(state[battleSide], battleType, options[battleSide]);
+					},
+					
+
+					
+
+					
+					
+
+
+					
+					priority:0,
+				},
+
+				'crimsonFlagship': {
+					
+					timing: 'beforeEverything_',
+					condition: function(unit, battleSide, battleType,  state, accumulation, options){
+						return !unit.notActiveSystem && options[battleSide].activeBreach;
+					},
+					effect: function(unit, battleSide, battleType,  state, accumulation, options){
+
+						
+						const otherSide = game.BattleSide.opponent(battleSide);
+
+						const flag = {
+							name: 'crimsonFlagship',
+							shortType: 'CRF',
+							duration: -1,
+							unitPointer: null,
+							side: otherSide,
+							unitSide: battleSide,
+							newUnitEffect: this.newUnitEffect,
+							priority: this.priority,
+						};
+						
+						state.flags[otherSide].push(flag);
+						unit.flagPointers.push(flag);
+						flag.unitPointer = unit;
+						
+						applyContinuousEffectsOnUnits(state[otherSide], otherSide, battleType,  state, accumulation, options);
+					},
+					
+
+					
+
+					terminate: function(unit, battleSide, battleType,  state, accumulation, options){
+						
+						
+						var otherSide = game.BattleSide.opponent(battleSide);
+
+						for (const unit of state[otherSide]) {
+							
+							
+							unit.update({notUseUnitAbilities: false});
+							
+						}
+						// print('trigger2')
+						// applyContinuousEffectsOnUnits(state[otherSide], otherSide, battleType,  state, accumulation, options);
+
+						// game.fillOutFleet(state[otherSide], battleType, options[otherSide]);
+						
+						return []
+					
+					},
+
+					newUnitEffect: function(unit){
+
+						
+						if (!unit.notUseUnitAbilities){
+							unit.update({notUseUnitAbilities: true});
+						}
+
+						if (unit.isDamageGhost){
+
+							if (unit.damageCorporeal){
+								unit.damageCorporeal.ghostCorporeal=undefined;
+							}
+							
+							return false;
+						};
+						
+
+						return true;
+					},
+
+
+					
+					priority:-1,
+				},
 				'l1z1xFlagship': {
 					
 					timing: 'duringCombat_',
 					
 					condition: function(unit, battleSide, battleType,  state, accumulation, options){
-						return battleType === 'Space' && !unit.notInSystem;
+						return battleType === game.BattleType.Space && !unit.notActiveSystem && !unit.notParticipatingWhilePresent;
 					},
 					effect: function(unit, battleSide, battleType,  state, accumulation, options){
 						
@@ -8018,22 +7755,50 @@
 							duration: -1,
 							unitPointer: null,
 							side: battleSide,
+							unitSide: battleSide,
 						};
 						
 						state.flags[battleSide].push(flag);
-						activeUnit.flagPointers.push(flag);
+						unit.flagPointers.push(flag);
 
-						flag.unitPointer = activeUnit;
+						flag.unitPointer = unit;
+					},
+					
+					priority:0,
+				},
+				'empyreanFlagship': {
+					
+					timing: 'beforeEverything_',
+					
+					condition: function(unit, battleSide, battleType,  state, accumulation, options){
+						return true;
+					},
+					effect: function(unit, battleSide, battleType,  state, accumulation, options){
+						
+
+						const flag = {
+							name: 'empyreanFlagship',
+							shortType: 'EMF',
+							duration: -1,
+							unitPointer: null,
+							side: battleSide,
+							unitSide: battleSide,
+						};
+						
+						state.flags[battleSide].push(flag);
+						unit.flagPointers.push(flag);
+
+						flag.unitPointer = unit;
 					},
 					
 					priority:0,
 				},
 				'sardakkFlagship': {
 					
-					timing: 'beforeCombat_',
+					timing: 'beforeEverything_',
 					
 					condition: function(unit, battleSide, battleType,  state, accumulation, options){
-						return !unit.notInSystem;
+						return !unit.notActiveSystem;
 					},
 					effect: function(unit, battleSide, battleType,  state, accumulation, options){
 						
@@ -8044,6 +7809,7 @@
 							duration: -1,
 							unitPointer: null,
 							side: battleSide,
+							unitSide: battleSide,
 						};
 						
 						state.flags[battleSide].push(flag);
@@ -8062,13 +7828,13 @@
 
 						
 
-						return !unit.notInSystem && unit.spaceArea && checkFleet(state[battleSide], obj => obj.typeShip) && !unit.damaged && unit.sustainDamage && !unit.lostSustain && !unit.notUseSustain && !unit.isDamageGhost;
+						return unit.presentSpace && checkFleet(state[battleSide], obj => obj.typeShip) && !unit.damaged && unit.sustainDamage && !unit.lostSustain && !unit.notUseSustain && !unit.isDamageGhost;
 
 
 					},
 					effect: function(unit, battleSide, battleType,  state, accumulation, options){
 
-						const sustain = activeUnit.toDamageGhost();
+						const sustain = unit.toDamageGhost();
 						
 						sustain.update({immune:true, damageCorporeal:undefined});
 
@@ -8088,8 +7854,9 @@
 							flag.unitPointer = sustain;
 							
 						}
+						
 
-						activeUnit.flagPointers.push(flag);
+						unit.flagPointers.push(flag);
 
 						
 
@@ -8099,6 +7866,11 @@
 					
 					priority:0,
 				},
+
+
+				
+
+				
 				
 			};
 		}
@@ -8106,11 +7878,168 @@
 		function initPassiveContinuousAbilities(){
 			return [
 				{
-					name: 'mini',
-					timing: 'beforeCombat_',
-					condition: function(thisSideOptions ){
+					name: 'articlesOfWar',
+					timing: '_',
+					condition: function(battleSide, battleType,  state, accumulation, options){
 
-						return thisSideOptions.abilities.mini;
+						return options[battleSide].articlesOfWar;
+					},
+					newUnitEffect: function(unit, battleSide, battleType,  state, accumulation, options){
+						
+						// not an elegant solution, would need to be updated if new printed mech abilities don't fall in these camps
+						if (unit.type === game.UnitType.Mech){
+							
+							const stockBase = window.fluidCanon(options[battleSide].unitsCanon, state.poles[battleSide],  options[battleSide])[unit.type]._baseStats;
+
+							const updates = {};
+							
+							if (stockBase.bombardmentValue){
+								updates.lostBombardment = true;
+							}
+							if (stockBase.spaceCannonValue){
+								updates.lostSpaceCannon = true;
+							}
+							if (stockBase.barrageValue){
+								updates.lostBarrage = true;
+							}
+							if (stockBase.planetaryShield){
+								updates.lostPlanetaryShield = true;
+							}
+
+							if (stockBase.typeShip){
+								updates.typeShip = false;
+							}
+							if (stockBase.typeGroundForce){
+								updates.typeGroundForce = false;
+							}
+							if (stockBase.typeStructure){
+								updates.typeStructure = false;
+							}
+							
+							updates.abilities = unit.abilities.filter(obj => !stockBase.abilities.includes(obj))
+
+
+								
+							
+							
+							unit.update(updates);
+
+							
+							
+						}
+
+						
+						
+
+						return true;
+					
+					},
+					priority: 1,
+				},
+				{
+					name: 'blitz',
+					timing: 'beforeEverything',
+					condition: function(battleSide, battleType,  state, accumulation, options){
+
+						return options[battleSide].blitz && battleType === game.BattleType.Ground;
+					},
+					newUnitEffect: function(unit){
+						
+						
+						if (unit.typeShip && unit.type !== game.UnitType.Fighter && !unit.notActiveSystem && (unit.bombardmentValue === undefined || unit.lostBombardment)){
+							unit.update({bombardmentValue: 6, bombardmentDice: 1});
+						}
+
+						
+						
+
+						return true;
+					
+					},
+					priority: 0,
+				},
+				{
+					name: 'crimsonFlagshipWeaken',
+					timing: 'beforeEverything_',
+					condition: function(battleSide, battleType,  state, accumulation, options){
+
+						return options[battleSide].crimsonFlagshipWeaken;
+					},
+					newUnitEffect: function(unit, battleSide, battleType,  state, accumulation, options){
+						
+						
+						if (!unit.notActiveSystem){
+							unit.update({notUseUnitAbilities: true});
+						}
+
+						if (unit.isDamageGhost){
+
+							if (unit.damageCorporeal){
+								unit.damageCorporeal.ghostCorporeal=undefined;
+							}
+							
+							return false;
+						};
+
+						return true;
+					
+					},
+					priority: -1,
+				},
+				{
+					name: 'disable',
+					timing: 'beforeEverything_',
+					condition: function(battleSide, battleType,  state, accumulation, options){
+						var otherSide = game.BattleSide.opponent(battleSide)
+						return options[otherSide].disable;
+					},
+					newUnitEffect: function(unit, battleSide, battleType,  state, accumulation, options){
+						
+						
+						if (!unit.notActiveSystem && unit.type === game.UnitType.PDS){
+							unit.update({lostPlanetaryShield: true, lostSpaceCannon:true});
+						}
+
+						return true;
+					
+					},
+					priority: -1,
+				},
+				{
+					name: 'entropicScar',
+					timing: 'beforeEverything_',
+					condition: function(battleSide, battleType,  state, accumulation, options){
+
+						return options[battleSide].entropicScar;
+					},
+					newUnitEffect: function(unit){
+						
+						
+						if (!unit.notActiveSystem){
+							unit.update({notUseUnitAbilities: true});
+						}
+
+						if (unit.isDamageGhost){
+
+							if (unit.damageCorporeal){
+								unit.damageCorporeal.ghostCorporeal=undefined;
+							}
+							
+							return false;
+						};
+						
+
+						return true;
+					
+					},
+					priority: -1,
+				},
+				{
+					name: 'mini',
+					timing: 'beforeEverything_',
+					condition: function(battleSide, battleType,  state, accumulation, options){
+
+						return options[battleSide].abilities.mini;
 					},
 					newUnitEffect: function(unit){
 						
@@ -8127,137 +8056,52 @@
 					},
 					priority: -1,
 				},
+
+				
+
 				{
-					name: 'entropicScar',
-					timing: 'beforeCombat_',
-					condition: function(thisSideOptions ){
+					name: 'smotheringPresence',
+					timing: '_',
+					condition: function(battleSide, battleType,  state, accumulation, options){
 
-						return thisSideOptions.entropicScar;
+						const otherSide = game.BattleSide.opponent(battleSide);
+						
+
+						return options[battleSide].smotheringPresenceWeaken || (options[otherSide].abilities.smotheringPresence || state.poles[otherSide].smotheringPresenceOwns !== undefined) && (checkFleet(state[otherSide], obj => obj.typeStructure) || checkFleet(state.notParticipating[otherSide], obj => obj.typeStructure));
 					},
-					newUnitEffect: function(unit){
+					newUnitEffect: function(unit, battleSide, battleType,  state, accumulation, options){
 						
 						
-						
-						unit.update({notUseUnitAbilities: true});
-						
+						if (!unit.notActiveSystem){
+							unit.update({notUseUnitAbilities: true});
+						}
+						if (unit.isDamageGhost){
 
-						
-						
-
+							if (unit.damageCorporeal){
+								unit.damageCorporeal.ghostCorporeal=undefined;
+							}
+							
+							return false;
+						};
 						return true;
 					
 					},
 					priority: -1,
-				}
+				},
+
+				
+				
+				
+				
+				
+				
 			]
 		}
 
+		// most single use ability, resource abilities that only have 1 resource, don't have flag but would need flags if there were multiple resources
 		function initActivations(){
 
 			return [
-				{
-					name: 'foresight',
-					timing: 'beforeCombat',
-					condition: function(_, battleSide, battleType,  state, accumulation, options){
-						
-						return options[battleSide].abilities.foresight && options[battleSide].useForesight && state.resources[battleSide].tgs?.total >= 3 && !options[battleSide].notRetreat && state.poles[battleSide].foresight === undefined;
-					},
-					effect: function(_, battleSide, battleType,  state, accumulation, options){
-						
-						for (const unit of state[battleSide]){
-							if (!unit.notInSystem)
-								unit.update({retreated: true});
-						}
-
-						
-
-						state.poles[battleSide].foresight = 'FS';
-
-						state.resources[battleSide].tgs.total -= 3;
-						accumulation[battleSide].tgsSpent += 3;
-
-						everRetreat = true;
-
-					},
-					priority: 0,
-				},
-				{
-					name: 'mentakHero',
-					timing: 'startOfRound',
-					condition: function(_, battleSide, battleType,  state, accumulation, options){
-
-						return state.poles[battleSide].mentakHero === undefined && battleType === game.BattleType.Space && options[battleSide].mentakHero;
-						
-						
-					},
-					effect: function(_, battleSide, battleType,  state, accumulation, options){
-						
-						state.poles[battleSide].mentakHero = 'MKH'
-					},
-					priority: 0,
-				},
-
-				{
-					name: 'moraleBoost',
-					timing: 'startOfRound',
-					condition: function(_, battleSide, battleType,  state, accumulation, options){
-						
-						return (state.resources[battleSide].moraleBoost?.total > 0) && !(state.flags[battleSide].some(item => item.name === 'moraleBoost'));
-					},
-					effect: function(_, battleSide, battleType,  state, accumulation, options){
-						state.resources[battleSide].moraleBoost.total -= 1;
-						state.flags[battleSide].push({
-							name: 'moraleBoost',
-							shortType: 'MB',
-							duration: 1,
-						})
-					},
-					priority: -1,
-				},
-				{
-					name: 'assaultCannon',
-					timing: 'startOfRound',
-					condition: function(_, battleSide, battleType,  state, accumulation, options){
-						
-						return (battleType === 'Space') && (options[battleSide].assaultCannon) && state.poles[battleSide].assaultCannon === undefined && state[battleSide].filter(obj => obj.type !== game.UnitType.Fighter && !obj.notInSystem && obj.spaceArea && obj.typeShip && !obj.invisible && !obj.isDamageGhost).length >= 3;
-					},
-					effect: function(_, battleSide, battleType,  state, accumulation, options){
-						
-						
-
-						var otherSide = game.BattleSide.opponent(battleSide);
-						var deadUnits = {
-							attacker : [],
-							defender : []
-						}
-						for (var i = state[otherSide].length - 1; i >= 0; i--){
-							const unit = state[otherSide][i];
-							if (unit.type !== game.UnitType.Fighter && unit.typeShip && !unit.isDamageGhost && !unit.invisible && !unit.immune){
-								deadUnits[otherSide].push(state[otherSide].splice(i,1)[0]);
-								break;
-							}
-						}
-
-						if (deadUnits.attacker.length > 0 || deadUnits.defender.length > 0){
-							var reward = {attacker:{tgsEarned:0, tgsSpent:0}, defender:{tgsEarned:0, tgsSpent:0}, rounds:0};
-
-							var [transitionArray, newStatesArray, , rewardsArray]=resolveDead2(state, deadUnits.attacker, deadUnits.defender, reward, battleType, options, true);
-
-							for (const newState of newStatesArray){
-								newState.poles[battleSide].assaultCannon = 'AC'; 
-							}
-
-							return [transitionArray, newStatesArray, rewardsArray,  false];
-
-						} else {
-							state.poles[battleSide].assaultCannon = 'AC';
-						}
-
-
-
-					},
-					priority: 2,
-				},
 				{
 					name:'ambush',
 					timing: 'startOfCombat',
@@ -8321,19 +8165,17 @@
 
 							const outputIn = computeFleetTransitionsWrapper(
 								indices.map(i => units[i]),
-								state[otherSide],
+								state[otherSide], 
+								game.ThrowType.Battle,
 								battleSide,
 								battleType,
-								state.resources[battleSide],
-								state.resources[otherSide],
-								state.poles[battleSide],
-								state.poles[otherSide],
-								game.ThrowType.Battle,
-								state.flags[battleSide],
-								options[battleSide],
-								options[otherSide],
+								state,
+								accumulation,
+								options,
 								true,
 							)
+
+							
 							
 
 							
@@ -8382,28 +8224,884 @@
 					},
 					priority: 1,
 				},
+				{
+					name: 'assaultCannon',
+					timing: 'startOfRound',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+						
+						return (battleType === 'Space') && (options[battleSide].assaultCannon) && state.poles[battleSide].assaultCannon === undefined && state[battleSide].filter(obj => obj.type !== game.UnitType.Fighter && !obj.notActiveSystem && obj.typeShip && !obj.invisible && !obj.isDamageGhost).length >= 3;
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+						
+						
 
-				// yinIndoctrination: {
-				// 	timing: 'startOfCombat',
-				// 	condition: function(fleet, opponentFleet, battleType, thisSideResources, thisSideOptions){
-				// 		var condition1 = thisSideOptions.abilities.indoctrination;
-				// 		var condition2 = false;
-				// 		//var condition2 = opponentFleet has 2 or more ground forces and isn't the Yin;
-				// 		return condition1 || condition2;
-				// 	},
-				// 	effect: function(fleet, opponentFleet, resources, flags){
-				// 		// remove 1 of your opponents infantry
-				// 		// add 1 of your infantry
-				// 	},
-				// 	priority: 1,
-				// }
-			]
+						var otherSide = game.BattleSide.opponent(battleSide);
+						var deadUnits = {
+							attacker : [],
+							defender : []
+						}
+						for (var i = state[otherSide].length - 1; i >= 0; i--){
+							const unit = state[otherSide][i];
+							if (unit.type !== game.UnitType.Fighter && unit.typeShip && !unit.isDamageGhost && !unit.invisible && !unit.immune){
+								deadUnits[otherSide].push(state[otherSide].splice(i,1)[0]);
+								break;
+							}
+						}
+
+						if (deadUnits.attacker.length > 0 || deadUnits.defender.length > 0){
+							var reward = {attacker:{tgsEarned:0, tgsSpent:0}, defender:{tgsEarned:0, tgsSpent:0}, rounds:0};
+
+							var [transitionArray, newStatesArray, , rewardsArray]=resolveDead2(state, deadUnits.attacker, deadUnits.defender, reward, battleType, options, {startKey: true});
+
+							for (const newState of newStatesArray){
+								newState.poles[battleSide].assaultCannon = 'AC'; 
+							}
+
+							return [transitionArray, newStatesArray, rewardsArray,  false];
+
+						} else {
+							state.poles[battleSide].assaultCannon = 'AC';
+						}
+
+
+
+					},
+					priority: 2,
+				},
+				{
+					name:'dimensionalSplicer',
+					timing: 'startOfCombat',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+						return (battleType === game.BattleType.Space) && (options[battleSide].dimensionalSplicer || state.poles[battleSide].dimensionalSplicerOwns !== undefined) && 
+						state.poles[battleSide].dimensionalSplicer;
+						
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options, notParticipating){
+						
+						var otherSide = game.BattleSide.opponent(battleSide);
+
+						
+						// var flagsToAdd = undefined;
+						var polesToAdd = {};
+						polesToAdd[battleSide]= {
+							name: 'dimensionalSplicer',
+							shortType:'DSP'
+						}
+
+							
+						var flagsToAdd = {};
+						// flagsToAdd[battleSide] = {
+						// 	name: 'dimensionalSplicer',
+						// 	shortType: 'DSP',
+						// 	duration: -1,
+						// };
+
+						
+						
+
+						var vector = [[[0]],[[1]]];
+						// var vector = [[[0],[1]]]
+
+
+						var attackerTransitions3D = battleSide === game.BattleSide.attacker ? vector : [[[1]]];
+						var defenderTransitions3D = battleSide === game.BattleSide.defender ? vector : [[[1]]];
+
+						var delayedSpend = {}
+
+						var hitFunction =  function(unit){
+							return true;
+						}
+
+						var AFB = 0;
+						for (const unit of state[battleSide]){
+							if (unit.barrageDice > 0){
+								AFB += unit.barrageDice * clamp((11- unit.barrageValue)/10,0,1);
+							}
+						}
+						// print(AFB)
+						var fighterNumber = state[otherSide].filter(unit => unit.type === game.UnitType.Fighter).length;
+						var killFighter = AFB < fighterNumber;
+						var killSustain = state.resources[battleSide].directHit?.total > 0 || state.resources[battleSide].spark?.total > 0 || options[otherSide].nonEuclidean || state.poles[otherSide].nonEuclideanOwns !== undefined ;
+						// killFighter=false;
+						
+						for (const unit of state[otherSide]){
+							if (!unit.immune && (!unit.ghostCorporeal || killSustain) && (unit.type !== game.UnitType.Fighter || killFighter)){
+								// print(unit)
+								hitFunction = function(unitIn){
+									
+									return unitIn.label === unit.label;
+								}
+								break;
+							}
+						}
+						// hitFunction = undefined;
+
+						var attackerSoftPredicate = battleSide === game.BattleSide.defender ? hitFunction : undefined;
+						var defenderSoftPredicate = battleSide === game.BattleSide.attacker ? hitFunction : undefined;
+						
+
+						
+						
+						
+						const output = matrixToStates(state, attackerTransitions3D,  defenderTransitions3D, flagsToAdd, polesToAdd, delayedSpend, accumulation, game.ThrowType.Bombardment, battleType,  options, 0, {
+							// attackerSpecialSoftPredicate: attackerSoftPredicate, 
+							// defenderSpecialSoftPredicate: defenderSoftPredicate,
+							attackerSoftPredicate: attackerSoftPredicate, 
+							defenderSoftPredicate: defenderSoftPredicate
+						});
+
+						// print('done')
+
+						// print(output);
+						
+
+						return output;
+					},
+					priority: 1,
+				},
+				{
+					name: 'emergencyRepairs',
+					timing: 'startOfRound',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+
+						var condition = (state.resources[battleSide].emergencyRepairs?.total > 0)
+						if (!condition){
+							return false;
+						}
+
+						const damageable = state[battleSide].filter(obj => 
+							!obj.invisible && !obj.immune && !obj.notUseSustain &&
+							obj.sustainDamage && !obj.lostSustain);
+						const damagedCount = damageable.filter(obj => obj.damaged).length;
+						const damagableCount = damageable.length;
+
+						
+						//  && !(state.flags[battleSide].some(item => item.name === 'ERS'));
+						if (options[battleSide].emergencyRepairsHalf){
+							return damagedCount>=Math.ceil(damagableCount/2)
+						} 
+						if (options[battleSide].emergencyRepairsAll){
+							return damagedCount>=damagableCount;
+						}
+						return damagedCount > 0;
+
+						
+						
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+						state.resources[battleSide].emergencyRepairs.total -= 1;
+						// state.flags[battleSide].push({
+						// 	name: 'emergencyRepairsStart',
+						// 	shortType: 'ERS',
+						// 	duration: 1,
+						// })
+						
+
+						for (var i = 0; i < state[battleSide].length; i++) {
+							var unit = state[battleSide][i];
+
+							if (unit.damaged && !unit.invisible && unit.sustainDamage && !unit.lostSustain) {
+								unit.update({damaged: false});
+
+								if (unit.sustainDamage && !unit.lostSustain && !unit.notUseSustain){
+									const sustain = unit.toDamageGhost()
+									addUnit(state[battleSide], sustain, battleSide, battleType,  state, accumulation, options);
+								}							
+							}
+						}
+
+					},
+					priority: 0,
+				},
+				{
+					name: 'emergencyRepairs',
+					timing: 'endOfRound',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+
+						var condition = (state.resources[battleSide].emergencyRepairs?.total > 0)
+						if (!condition){
+							return false;
+						}
+
+						// const damageable = state[battleSide].filter(obj => 
+						// 	!obj.invisible && !obj.immune && !obj.notUseSustain &&
+						// 	((obj.sustainDamage && !obj.lostSustain) || (options[battleSide].voidShielding && obj.type !== game.UnitType.Fighter && obj.typeShip)));
+						const damageable = state[battleSide].filter(obj => 
+							!obj.invisible && !obj.immune && !obj.notUseSustain &&
+							obj.sustainDamage && !obj.lostSustain);
+						const damagedCount = damageable.filter(obj => obj.damaged).length;
+						const damagableCount = damageable.length;
+
+						
+						
+						
+						//  && !(state.flags[battleSide].some(item => item.name === 'ERS'));
+						if (options[battleSide].emergencyRepairsHalf){
+							return damagedCount>=Math.ceil(damagableCount/2)
+						} 
+						if (options[battleSide].emergencyRepairsAll){
+							return damagedCount>=damagableCount;
+						}
+						return damagedCount > 0;
+
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+						state.resources[battleSide].emergencyRepairs.total -= 1;
+						// state.flags[battleSide].push({
+						// 	name: 'emergencyRepairsStart',
+						// 	shortType: 'ERS',
+						// 	duration: 1,
+						// })
+						
+
+						for (var i = 0; i < state[battleSide].length; i++) {
+							var unit = state[battleSide][i];
+
+							if (unit.damaged && !unit.invisible) {
+								unit.update({damaged: false});
+
+								if (unit.sustainDamage && !unit.lostSustain && !unit.notUseSustain){
+									const sustain = unit.toDamageGhost()
+									addUnit(state[battleSide], sustain, battleSide, battleType,  state, accumulation, options);
+								}							
+							}
+						}
+
+					},
+					priority: 0,
+				},
+
+				{
+					name: 'fighterPrototype',
+					timing: 'startOfCombat',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+						
+						return options[battleSide].fighterPrototype && state.poles[battleSide].fighterPrototype === undefined && battleType === game.BattleType.Space;
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+						
+						state.flags[battleSide].push({
+							name: 'fighterPrototype',
+							shortType: 'FP',
+							duration: 1,
+						})
+						state.poles[battleSide].fighterPrototype = 'FP';
+					},
+					priority: -1,
+				},
+
+				{
+					name: 'foresight',
+					timing: 'beforeEverything',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+						
+						return options[battleSide].abilities.foresight && options[battleSide].useForesight && state.resources[battleSide].tgs?.total >= 3 && !options[battleSide].notRetreat && state.poles[battleSide].foresight === undefined && battleType === game.BattleType.Space;
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+						
+						for (const unit of state[battleSide]){
+							if (!unit.notActiveSystem)
+								unit.update({retreated: true});
+						}
+
+						
+
+						state.poles[battleSide].foresight = 'FS';
+
+						state.resources[battleSide].tgs.total -= 3;
+						accumulation[battleSide].tgsSpent += 3;
+
+						everRetreat = true;
+
+					},
+					priority: 0,
+				},
+
+				{
+					name: 'foresightTF',
+					timing: 'beforeEverything',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+						
+						return options[battleSide].abilities.foresightTF && !options[battleSide].notRetreat && state.poles[battleSide].foresightTF === undefined && battleType === game.BattleType.Space;
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+						
+						for (const unit of state[battleSide]){
+							if (!unit.notActiveSystem)
+								unit.update({retreated: true});
+						}
+
+						
+
+						state.poles[battleSide].foresightTF = 'FSW';
+
+						
+
+						everRetreat = true;
+
+					},
+					priority: 0,
+				},
+
+				{
+					name:'harrow',
+					timing: 'endOfRound',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+						return (battleType === game.BattleType.Ground) && (options[battleSide].abilities.harrow) && battleSide === game.BattleSide.attacker &&
+						!(state.flags[battleSide].some(obj => obj.name === 'harrow'));
+						
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options, notParticipating){
+						
+						var otherSide = game.BattleSide.opponent(battleSide)
+
+						
+						var flagsToAdd = undefined;
+						var polesToAdd = {};
+							
+						var flagsToAdd = {};
+						flagsToAdd[battleSide] = {
+							name: 'harrow',
+							shortType: 'HAR',
+							duration: 1,
+						};
+
+						
+						const filter = function(unit){
+								return !unit.notActiveSystem && (unit.typeShip || (unit.abilities.includes('l1z1xMech') && (unit.notParticipatingWhilePresent || !unit.presentPlanet) && battleType === game.BattleType.Ground));
+							}
+
+						const attackerFull = state.attacker.concat(notParticipating.attacker).filter(filter);
+						const defenderFull = state.defender.concat(notParticipating.defender);
+						
+						
+
+						const [attackerTransitions3D, attackerDelayedSpend] = getBombardmentTransition(
+							attackerFull, 
+							defenderFull,
+							battleSide, 
+							battleType, 
+							state, 
+							accumulation, 
+							options,
+						);
+
+						
+
+						
+
+						
+
+						// return;
+
+
+						var delayedSpend = {
+							attacker: attackerDelayedSpend
+						}
+						const defenderTransitions3D = [[[1]]]
+
+						
+						
+						
+						const output = matrixToStates(state, attackerTransitions3D,  defenderTransitions3D, flagsToAdd, polesToAdd, delayedSpend, accumulation, game.ThrowType.Bombardment, battleType,  options, 0);
+
+						
+						
+
+						return output;
+					},
+					priority: 1,
+				},
+				{
+					name:'indoctrination',
+					timing: 'startOfCombat',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+						var otherSide = game.BattleSide.opponent(battleSide);
+
+						
+
+						return battleType === game.BattleType.Ground && (options[battleSide].abilities.indoctrination || state.poles[battleSide].indoctrinationOwns !== undefined) && 
+						state.poles[battleSide].indoctrination === undefined && checkFleet(state[otherSide],obj => obj.type === game.UnitType.Infantry) && state.resources[battleSide].tgs?.total >= 2;
+						
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options, notParticipating){
+
+						print('trigger')
+						
+						var otherSide = game.BattleSide.opponent(battleSide);
+
+						
+						state.poles[battleSide].indoctrination = 'IND';
+
+							
+						
+
+						for (let i = 0; i < state[otherSide].length; i++){
+							const unit = state[otherSide][i];
+							if (unit.type === game.UnitType.Infantry && !unit.invisible && !unit.immune){
+								state[otherSide].splice(i,1);
+
+								
+								createUnits(game.UnitType.Infantry, 1, battleSide, battleType,  state, accumulation, options);
+
+								state.resources[battleSide].tgs.total -= 2;
+								accumulation[battleSide].tgsSpent += 2;
+
+								return
+								
+							}
+						}
+
+
+						
+						
+
+						
+					},
+					priority: 1,
+				},
+				{
+					name: 'mentakHero',
+					timing: 'startOfRound',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+
+						return state.poles[battleSide].mentakHero === undefined && battleType === game.BattleType.Space && options[battleSide].mentakHero;
+						
+						
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+						
+						state.poles[battleSide].mentakHero = 'MKH'
+					},
+					priority: 0,
+				},
+
+				{
+					name: 'moraleBoost',
+					timing: 'startOfRound',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+						
+						return (state.resources[battleSide].moraleBoost?.total > 0) && !(state.flags[battleSide].some(item => item.name === 'moraleBoost'));
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+						state.resources[battleSide].moraleBoost.total -= 1;
+						state.flags[battleSide].push({
+							name: 'moraleBoost',
+							shortType: 'MB',
+							duration: 1,
+						})
+					},
+					priority: -1,
+				},
+
+				{
+					name: 'munitionsReserves',
+					timing: 'startOfRound',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+						
+						return battleType === game.BattleType.Space && (state.resources[battleSide].tgs?.total >= 2) && (options[battleSide].abilities.munitionsReserves || state.poles[battleSide].munitionsReservesOwns) && !(state.flags[battleSide].some(item => item.name === 'munitionsReserves')) && (options[battleSide].munitionsReservesEveryRound || (options[battleSide].munitionsReservesOnceRound && state.poles[battleSide].munitionsReservesOnceRound === undefined));
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+						state.resources[battleSide].tgs.total -= 2;
+						accumulation[battleSide].tgsSpent += 2;
+						state.flags[battleSide].push({
+							name: 'munitionsReserves',
+							shortType: 'MR',
+							duration: 1,
+						})
+						state.poles[battleSide].munitionsReservesOnceRound = 'skip';
+					},
+					priority: -1,
+				},
+
+				{
+					name: 'naazRokhaMech',
+					timing: 'startOfCombat',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+						
+						
+
+						return options[battleSide].units.naazRokhaMech && !options[battleSide].units.naazRokhaMechII && !options[battleSide].articlesOfWar && state[battleSide].some(obj => obj.type === game.UnitType.Mech && obj.spaceArea) && battleType === game.BattleType.Space && state.poles[battleSide].naazRokhaMechSpace === undefined;
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+						
+						
+
+						state.poles[battleSide].naazRokhaMechSpace = 'NRM';
+
+						for (const unit of state[battleSide]){
+							if (unit.type === game.UnitType.Mech && unit.spaceArea && unit.invisible){
+								unit.update({invisible:false, immune:false, passive:false});
+							}
+						}
+
+						replaceUnit(state[battleSide], game.UnitType.Mech, battleSide, battleType,  state, accumulation, options);
+
+						
+
+					},
+					priority: 3,
+				},
+
+				{
+					name: 'orangeMech',
+					timing: 'startOfRound',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+
+						var condition = battleType === game.BattleType.Ground && options[battleSide].units.orangeMech && state.resources[battleSide].tgs?.total >= 3 && (options[battleSide].orangeMechRepairsOne || options[battleSide].orangeMechRepairsHalf || options[battleSide].orangeMechRepairsAll) && !options[battleSide].articlesOfWar;
+						if (!condition){
+							return false;
+						}
+						
+						const damageable = state[battleSide].filter(obj => 
+							!obj.invisible && !obj.immune && !obj.notUseSustain &&
+							obj.sustainDamage && !obj.lostSustain && obj.type === game.UnitType.Mech);
+						const damagedCount = damageable.filter(obj => obj.damaged).length;
+						const damagableCount = damageable.length;
+
+						
+						if (options[battleSide].orangeMechRepairsOne){
+							return damagedCount > 0;
+						}
+						if (options[battleSide].orangeMechRepairsHalf){
+							return damagedCount>=Math.ceil(damagableCount/2)
+						} 
+						if (options[battleSide].orangeMechRepairsAll){
+							return damagedCount>=damagableCount;
+						}
+						return false;
+
+						
+						
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+						state.resources[battleSide].tgs.total -= 3;
+						accumulation[battleSide].tgsSpent += 3;
+						
+
+						for (var i = 0; i < state[battleSide].length; i++) {
+							var unit = state[battleSide][i];
+
+							if (unit.damaged && !unit.invisible && unit.type === game.UnitType.Mech) {
+								unit.update({damaged: false});
+
+								if (unit.sustainDamage && !unit.lostSustain && !unit.notUseSustain){
+									const sustain = unit.toDamageGhost()
+									addUnit(state[battleSide], sustain, battleSide, battleType,  state, accumulation, options);
+								}							
+							}
+						}
+
+					},
+					priority: 0,
+				},
+
+				
+
+				{
+					name:'proximaTargeting',
+					timing: 'startOfRound',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+						return (battleType === game.BattleType.Ground) && (options[battleSide].proximaTargeting || state.poles[battleSide].proximaTargetingOwns !== undefined) && 
+						!(state.flags[battleSide].some(item => item.name === 'proximaTargeting')) &&
+						checkFleet(state[battleSide], unit => unit.galvanized) && !options[battleSide].noProximaRoll;
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+
+						
+						
+						// state.flags[battleSide].push({
+						// 	name: 'proximaTargeting',
+						// 	shortType: 'PT',
+						// 	duration: 1,
+						// })
+						
+						
+
+						
+						var otherSide = game.BattleSide.opponent(battleSide)
+
+						
+						
+						var polesToAdd = {};
+						// polesToAdd[battleSide] = {
+						// 	name: 'proximaTargeting',
+						// 	shortType: 'PT',
+						// }
+							
+						var flagsToAdd = {};
+						flagsToAdd[battleSide] = {
+							name: 'proximaTargeting',
+							shortType: 'PT',
+							duration: 1,
+						};
+
+						var fakeFleet = [{
+							type: undefined,
+							bombardmentValue: 8,
+							bombardmentDice: 3,
+							abilities: [],
+						}]
+
+						
+						
+
+						const [mySideTransitions3D, mySideDelayedSpend] = getBombardmentTransition(
+							fakeFleet, 
+							state[otherSide], 
+							battleSide, 
+							battleType, 
+							state, 
+							accumulation, 
+							options,
+						);
+
+						
+
+						
+
+						const [otherSideTransitions3D, otherSideDelayedSpend] = getBombardmentTransition(
+							fakeFleet, 
+							state[battleSide], 
+							otherSide, 
+							battleType, 
+							state, 
+							accumulation, 
+							options,
+						);
+
+						// return;
+
+
+						var delayedSpend = {}
+						delayedSpend[battleSide] = mySideDelayedSpend;
+						delayedSpend[otherSide] = otherSideDelayedSpend;
+						
+						
+						const attackerTransitions3D = battleSide === game.BattleSide.attacker ? mySideTransitions3D : otherSideTransitions3D;
+
+						const defenderTransitions3D = battleSide === game.BattleSide.defender ? mySideTransitions3D : otherSideTransitions3D;
+
+						
+						
+						
+						const output = matrixToStates(state, attackerTransitions3D,  defenderTransitions3D, flagsToAdd, polesToAdd, delayedSpend, accumulation, game.ThrowType.Bombardment, battleType,  options, 0);
+
+						
+						
+
+						return output;
+					},
+					priority: 1,
+				},
+
+				{
+					name:'proximaTargetingTF',
+					timing: 'startOfRound',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+						return (battleType === game.BattleType.Ground) && (options[battleSide].abilities.proximaTargetingTF || state.poles[battleSide].proximaTargetingTFOwns !== undefined) && 
+						!(state.flags[battleSide].some(item => item.name === 'proximaTargetingTF')) && !options[battleSide].noProximaRoll;
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+
+						
+						
+						// state.flags[battleSide].push({
+						// 	name: 'proximaTargeting',
+						// 	shortType: 'PT',
+						// 	duration: 1,
+						// })
+						
+						
+
+						
+						var otherSide = game.BattleSide.opponent(battleSide)
+
+						
+						
+						var polesToAdd = {};
+						// polesToAdd[battleSide] = {
+						// 	name: 'proximaTargetingTF',
+						// 	shortType: 'PTW',
+						// }
+							
+						var flagsToAdd = {};
+						flagsToAdd[battleSide] = {
+							name: 'proximaTargetingTF',
+							shortType: 'PTW',
+							duration: 1,
+						};
+						
+						var fakeFleet = [{
+							type: undefined,
+							bombardmentValue: 7,
+							bombardmentDice: 3,
+							abilities: [],
+						}]
+
+						
+						
+
+						const [mySideTransitions3D, mySideDelayedSpend] = getBombardmentTransition(
+							fakeFleet, 
+							state[otherSide], 
+							battleSide, 
+							battleType, 
+							state, 
+							accumulation, 
+							options,
+						);
+
+						
+
+						
+
+						const [otherSideTransitions3D, otherSideDelayedSpend] = getBombardmentTransition(
+							fakeFleet, 
+							state[battleSide], 
+							otherSide, 
+							battleType, 
+							state, 
+							accumulation, 
+							options,
+						);
+
+						// return;
+
+
+						var delayedSpend = {}
+						delayedSpend[battleSide] = mySideDelayedSpend;
+						delayedSpend[otherSide] = otherSideDelayedSpend;
+						
+						
+						const attackerTransitions3D = battleSide === game.BattleSide.attacker ? mySideTransitions3D : otherSideTransitions3D;
+
+						const defenderTransitions3D = battleSide === game.BattleSide.defender ? mySideTransitions3D : otherSideTransitions3D;
+
+						
+						
+						
+						const output = matrixToStates(state, attackerTransitions3D,  defenderTransitions3D, flagsToAdd, polesToAdd, delayedSpend, accumulation, game.ThrowType.Bombardment, battleType,  options, 0);
+
+						
+						
+
+						return output;
+					},
+					priority: 1,
+				},
+
 			
+
+				{
+					name: 'revealPrototype',
+					timing: 'startOfRound',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+						
+						
+
+						return options[battleSide].revealPrototype && state.poles[battleSide].revealPrototype === undefined && state.resources[battleSide].tgs?.total >= 4 &&
+						Object.values(game.UnitType).some(unit => options[battleSide][`upgrade${unit}`])
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+						state.poles[battleSide].revealPrototype = 'RP';
+
+						
+						for (const unitType in game.UnitType){
+							
+							if (options[battleSide][`upgrade${unitType}`] && state[battleSide].some(obj => !obj.invisible && obj.type === unitType && !obj.isDamageGhost)){
+								
+								const name = options[battleSide].unitsVersion[unitType].upgraded.name;
+								if (name === undefined){
+									continue
+								}
+
+								if (name === "standardUpgrade"){
+									state.poles[battleSide][unitType] = 'skip';
+								} else {
+									
+									state.poles[battleSide][name] = 'skip';
+								}
+
+								state.resources[battleSide].tgs.total -= 4;
+								accumulation[battleSide].tgsSpent += 4;
+								replaceUnit(state[battleSide], unitType, battleSide, battleType,  state, accumulation, options);
+
+								
+
+								return;
+
+							}
+						}
+
+						
+					},
+					priority: -1,
+				},
+
+				{
+					name: 'skilledRetreat',
+					timing: 'startOfCombat',
+					condition: function(_, battleSide, battleType,  state, accumulation, options){
+
+						
+						
+						return options[battleSide].skilledRetreat && !options[battleSide].notRetreat && state.poles[battleSide].skilledRetreat === undefined && battleType === game.BattleType.Space;
+					},
+					effect: function(_, battleSide, battleType,  state, accumulation, options){
+
+						
+						
+						for (const unit of state[battleSide]){
+							if (!unit.notActiveSystem)
+								unit.update({retreated: true});
+						}
+
+						
+
+						state.poles[battleSide].skilledRetreat = 'SR';
+
+						
+
+						everRetreat = true;
+
+					},
+					priority: 0,
+				},
+
+			
+				
+				
+
+				
+				
+				
+				
+				
+				
+				
+				
+
+				
+
+				
+			]
 		}
 
 		function initActiveBoosts(){
 
 			return {
+
+				'fighterPrototype': {
+					apply: function (unit, battleType, throwType, sideOptions) {
+						const output = 
+							function (unitIn) {
+								return (throwType === game.ThrowType.Battle) && (unitIn.type === game.UnitType.Fighter) ? 2 : 0;
+							};
+						return output;
+							
+					}
+				},
 
 				'moraleBoost': {
 					apply: function (unit, battleType, throwType, sideOptions) {
@@ -8421,34 +9119,112 @@
 						return output;
 					}
 				},
+				
 
 			}
 		}
 		function initPassiveBoosts(){
 			return [
 				{
-					name: 'unrelenting',
-					condition: function(fleet, opponentFleet, battleSide, battleType, thisSideResources, thisSideFlags, thisSideOptions){
-						return thisSideOptions.faction === game.Faction.Sardakk;
+					name: 'bunker',
+					condition: function(fleet, throwType, battleSide, battleType, state, accumulation, options, afraid){
+						
+						return options.defender.bunker && battleType === game.BattleType.Ground && throwType === game.ThrowType.Bombardment;
 					},
-					apply: function (battleType, throwType, sideOptions) {
-						const output = (throwType === game.ThrowType.Battle) ? 1 : 0;
+					apply: function (battleType, throwType, delayedSpend, sideOptions) {
+						const output = -4;
+							
 						return output;
 							
 					}
 				},
 				{
-					name: 'superchargeAbility',
-					singleUnit: true,
-					condition: function(fleet, opponentFleet, battleSide, battleType, thisSideResources, thisSideFlags, thisSideOptions){
-						return thisSideOptions.abilities.superchargeAbility;
+					name: 'nebula',
+					condition: function(fleet, throwType, battleSide, battleType, state, accumulation, options, afraid){
+						
+						return options[battleSide].nebula && battleSide === game.BattleSide.defender && battleType === game.BattleType.Space && throwType === game.ThrowType.Battle;
 					},
-					apply: function (battleType, throwType, sideOptions) {
-						const output = (throwType === game.ThrowType.Battle) ? 2 : 0;
+					apply: function (battleType, throwType, delayedSpend, sideOptions) {
+						const output = 
+							function (unitIn) {
+								return (unitIn.typeShip) ? 1 : 0;
+							};
 						return output;
 							
 					}
-				}
+				},
+
+				{
+					name: 'planesplitter',
+					condition: function(fleet, throwType, battleSide, battleType, state, accumulation, options, afraid){
+						return options[battleSide].abilities.planesplitter && throwType === game.ThrowType.Battle;
+					},
+					apply: function (battleType, throwType, delayedSpend, sideOptions) {
+						const output = 2;
+						return output;
+							
+					}
+				},
+
+				{
+					name: 'prophecyOfIxth',
+					condition: function(fleet, throwType, battleSide, battleType, state, accumulation, options, afraid){
+						return options[battleSide].prophecyOfIxth && throwType === game.ThrowType.Battle;
+					},
+					apply: function (battleType, throwType, delayedSpend, sideOptions) {
+						const output = 
+							function (unitIn) {
+								return (unitIn.type === game.UnitType.Fighter) ? 1 : 0;
+							};
+						return output;
+							
+					}
+				},
+				{
+					name: 'purpleMech',
+					condition: function(fleet, throwType, battleSide, battleType, state, accumulation, options, afraid){
+						return throwType === game.ThrowType.Battle;
+					},
+					apply: function (battleType, throwType, delayedSpend, sideOptions) {
+						const output = 
+							function (unitIn) {
+								
+								return unitIn.abilities.includes('purpleMech') ? sideOptions.nearbyAnomalies : 0;
+							};
+						return output;
+							
+					}
+				},
+				{
+					name: 'superchargeTF',
+					singleUnit: true,
+					condition: function(fleet, throwType, battleSide, battleType, state, accumulation, options, afraid){
+						return (options[battleSide].abilities.superchargeTF || state.poles[battleSide].superchargeTFOwns !== undefined) && throwType === game.ThrowType.Battle;
+					},
+					apply: function (battleType, throwType, delayedSpend, sideOptions) {
+						const output = 
+							function (unitIn) {
+								return (unitIn.type !== undefined) ? 2 : 0;
+							};
+						return output;
+							
+					}
+				},
+				{
+					name: 'unrelenting',
+					condition: function(fleet, throwType, battleSide, battleType, state, accumulation, options, afraid){
+						return (options[battleSide].abilities.unrelenting || state.poles[battleSide].unrelentingOwns !== undefined) && throwType === game.ThrowType.Battle;
+					},
+					apply: function (battleType, throwType, delayedSpend, sideOptions) {
+						const output = 1;
+						return output;
+							
+					}
+				},
+
+				
+				
+				
 			]
 		}
 
@@ -8457,27 +9233,84 @@
 			return {
 
 				
+				'blueMech': {
+					apply: function (unit, battleType, throwType, sideOptions) {
+						const output = 
+							function (unitIn) {
+								return (throwType === game.ThrowType.Battle) && (unitIn === unit) ? 1 : 0;
+							};
+						return output;
+					}
+				},
+				
+				
 
 			}
 		}
 		function initPassiveRollBoosts(){
 			return [
+				
 				{
-					name: 'plasmaScoring',
+					name: 'ambuscade',
 					singleUnit: true,
-					condition: function(fleet, opponentFleet, battleSide, battleType, thisSideResources, thisSideFlags, thisSideOptions){
+					condition: function(fleet, throwType, battleSide, battleType, state, accumulation, options, afraid){
 						
-						return (checkFleet(fleet, obj => obj.type !== undefined) && thisSideOptions.plasmaScoring);
+						// print(thisSideResources.ambuscade?.total > 0 && (throwType === game.ThrowType.Barrage || throwType === game.ThrowType.SpaceCannon || throwType === game.ThrowType.Bombardment) && !afraid)
+						
+
+						return state.resources[battleSide].ambuscade?.total > 0 && unitAbility(throwType) && !afraid;
 					},
-					apply: function (battleType, throwType, sideOptions) {
+					apply: function (battleType, throwType, delayedSpend, sideOptions) {
+						
+						
+						delayedSpend.ambuscade = delayedSpend.ambuscade ? delayedSpend.ambuscade + 1 : 1;
 						
 						const output = 
 							function (unitIn) {
-								return (unitIn.type !== undefined) && (throwType === game.ThrowType.Bombardment || throwType === game.ThrowType.SpaceCannon) ? 1 : 0;
+								return unitIn.type !== undefined ? 1 : 0;
 							};
 						return output;
 					},
-				}
+				},
+
+				{
+					name: 'argentCommander',
+					singleUnit: true,
+					condition: function(fleet, throwType, battleSide, battleType, state, accumulation, options, afraid){
+						const output = checkFleet(fleet, obj => obj.type !== undefined) && (options[battleSide].argentCommander || state.poles[battleSide].argentCommanderOwns) && unitAbility(throwType);
+						
+						
+						return output;
+					},
+					apply: function (battleType, throwType, delayedSpend, sideOptions) {
+						
+						const output = 
+							function (unitIn) {
+								return unitIn.type !== undefined ? 1 : 0;
+							};
+						return output;
+					},
+				},
+
+				{
+					name: 'plasmaScoring',
+					singleUnit: true,
+					condition: function(fleet, throwType, battleSide, battleType, state, accumulation, options, afraid){
+						const output = checkFleet(fleet, obj => obj.type !== undefined) && (options[battleSide].plasmaScoring || state.poles[battleSide].plasmaScoringOwns) && (throwType === game.ThrowType.SpaceCannon || throwType === game.ThrowType.Bombardment);
+						
+						
+						return output;
+					},
+					apply: function (battleType, throwType, delayedSpend, sideOptions) {
+						
+						const output = 
+							function (unitIn) {
+								return (unitIn.type !== undefined) ? 1 : 0;
+							};
+						return output;
+					},
+				},
+				
 
 			]
 		}
@@ -8485,7 +9318,12 @@
 
 			return {
 
-				
+				'munitionsReserves': {
+					apply: function (unit, battleType, throwType, sideOptions) {
+						const output = (throwType === game.ThrowType.Battle) ? 1 : 0;
+						return output;
+					}
+				},
 
 			}
 		}
@@ -8495,25 +9333,66 @@
 			return [
 
 				{
-					name: 'warFunding',
-					condition: function(fleet, opponentFleet, battleSide, battleType, throwType, thisSideResources, thisSideFlags,  thisSideOptions, afraid){
+					name: 'fireTeam',
+					condition: function(fleet, throwType, battleSide, battleType, state, accumulation, options, potentialThundarian){
+						
+						
+						// var otherSide = game.BattleSide.opponent(battleSide);
+
+						return state.resources[battleSide].fireTeam?.total > 0 && throwType === game.ThrowType.Battle && battleType === game.BattleType.Ground && !potentialThundarian;
+					},
+					apply: function (battleType, throwType, delayedSpend, sideOptions) {
+						
+						
+						delayedSpend.fireTeam = delayedSpend.fireTeam ? delayedSpend.fireTeam + 1 : 1;
+						
+						const output = 
+							function (unitIn) {
+								return (unitIn.typeGroundForce) ? 1 : 0;
+							};
+						return output;
+					},
+				},
+
+				{
+					name: 'jolnarCommander',
+					condition: function(fleet, throwType, battleSide, battleType, state, accumulation, options, potentialThundarian){
 						
 						// return (checkFleet(fleet, obj => obj.type !== undefined) && thisSideOptions.plasmaScoring);
 
-						return thisSideResources.warFunding?.total > 0 && throwType === game.ThrowType.Battle && !afraid;
+						return (options[battleSide].jolnarCommander || state.poles[battleSide].jolnarCommanderOwns) && unitAbility(throwType);
+					},
+					apply: function (battleType, throwType, delayedSpend, sideOptions) {
+						
+						
+						const output = 
+							function (unitIn) {
+								return (unitIn.type !== undefined) ? 1 : 0;
+							};
+						return output;
+					},
+				},
+
+				
+
+				{
+					name: 'warFunding',
+					condition: function(fleet, throwType, battleSide, battleType, state, accumulation, options, potentialThundarian){
+						
+						// return (checkFleet(fleet, obj => obj.type !== undefined) && thisSideOptions.plasmaScoring);
+
+						return state.resources[battleSide].warFunding?.total > 0 && throwType === game.ThrowType.Battle && !potentialThundarian;
 					},
 					apply: function (battleType, throwType, delayedSpend, sideOptions) {
 						
 						
 						delayedSpend.warFunding = delayedSpend.warFunding ? delayedSpend.warFunding + 1 : 1;
 						
-						const output = 
-							function (unitIn) {
-								return (throwType === game.ThrowType.Battle) ? 1 : 0;
-							};
+						const output = 1;
 						return output;
 					},
-				}
+				},
+				
 
 			]
 		}
@@ -8522,24 +9401,26 @@
 		function initCancelHits(){
 			return [
 				{
-					name: 'shieldsHolding',
-					timing: 'duringCombat_',
-					condition: function(fleet, hits, simRemaining, thisSideLost, thisSideResources, throwType, battleType, onceSet){
-						return (thisSideResources.shieldsHolding) && (thisSideResources.shieldsHolding.total > 0) && hits > 1 && (simRemaining === 0|| thisSideLost) && battleType === 'Space' && !onceSet.has(this.name);
+					name: 'maneuveringJets',
+					timing: '_',
+					condition: function(fleet, hits, simRemaining, thisSideLost, throwType, onceSet,  battleSide, battleType, state, accumulations, options){
+						return (state.resources[battleSide].maneuveringJets?.total > 0) && hits > 0 && throwType === game.ThrowType.SpaceCannon && !onceSet.has(this.name);
 					},
-					effect: function( fleet, thisSideResources){
-						thisSideResources.shieldsHolding --;
-						return [2,0, false]; // how many cancelled hits, and how many produced hits
+					effect: function(fleet, battleSide, battleType, state, accumulation, options){
+						
+						state.resources[battleSide].maneuveringJets.total -= 1;
+						return [1,0, false]; // how many cancelled hits, and how many produced hits
 					},
-					priority: 1,
+					priority: 6,
 				},
+
 				{
 					name: 'nomadMech',
 					timing: 'duringCombat_',
-					condition: function(fleet, hits, simRemaining, thisSideLost, thisSideResources, thisSideFlags, throwType, battleType){
-						return thisSideFlags.some(item => item.name === this.name) && hits > 0 && (simRemaining === 0 || thisSideLost) && checkFleet(fleet, unit => unit.typeShip);
+					condition: function(fleet, hits, simRemaining, thisSideLost, throwType, onceSet,  battleSide, battleType, state, accumulations, options){
+						return state.flags[battleSide].some(item => item.name === this.name) && hits > 0 && (simRemaining === 0 || thisSideLost) && checkFleet(fleet, unit => unit.typeShip);
 					},
-					effect: function( fleet, thisSideResources, otherSideResources, thisSideFlags, timing, thisSideOptions, thisSideAccumulation){
+					effect: function(fleet, battleSide, battleType, state, accumulation, options){
 						const flagIndex = thisSideFlags.findIndex(obj => obj.name === this.name);
 
 						const [flag] = thisSideFlags.splice(flagIndex,1);
@@ -8548,14 +9429,139 @@
 						fleet.splice(fleet.indexOf(unit),1);
 
 						
-						return sustainDamageEffect(unit, fleet, thisSideResources, otherSideResources, timing, thisSideOptions, thisSideAccumulation);
+						return sustainDamageEffect(unit, battleSide, battleType, state, accumulation, options);
+
 					},
 					priority: 1,
 				},
+
+				{
+					name: 'proximaTargeting',
+					timing: '_',
+					
+					condition: function(fleet, hits, simRemaining, thisSideLost, throwType, onceSet,  battleSide, battleType, state, accumulations, options){
+
+						
+
+						return (options[battleSide].proximaTargeting || state.poles[battleSide].proximaTargetingOwns !== undefined) && throwType === game.ThrowType.Bombardment && !onceSet.has(this.name);
+
+
+					},
+					effect: function(fleet, battleSide, battleType, state, accumulation, options){
+						
+						const cancels = fleet.filter(obj => !obj.invisible && obj.galvanized).length
+						return [cancels,0, false]; // how many cancelled hits, and how many produced hits
+					},
+					priority: 10,
+				},
+
+				{
+					name: 'proximaTargetingTF',
+					timing: '_',
+					
+					condition: function(fleet, hits, simRemaining, thisSideLost, throwType, onceSet,  battleSide, battleType, state, accumulations, options){
+
+						
+
+						return (options[battleSide].abilities.proximaTargetingTF || state.poles[battleSide].proximaTargetingTFOwns !== undefined) && throwType === game.ThrowType.Bombardment && !onceSet.has(this.name);
+
+
+					},
+					effect: function(fleet, battleSide, battleType, state, accumulation, options){
+						
+						
+						return [1,0, false]; // how many cancelled hits, and how many produced hits
+					},
+					priority: 10,
+				},
+
+				{
+					name: 'shieldsHolding',
+					timing: 'duringCombat_',
+					condition: function(fleet, hits, simRemaining, thisSideLost, throwType, onceSet,  battleSide, battleType, state, accumulations, options){
+						return (state.resources[battleSide].shieldsHolding?.total > 0) && hits > 0 && ((hits > 1 && simRemaining === 0) || thisSideLost) && battleType === 'Space' && !onceSet.has(this.name);
+					},
+					effect: function(fleet, battleSide, battleType, state, accumulation, options){
+						
+						state.resources[battleSide].shieldsHolding.total -= 1;
+						return [2,0, false]; // how many cancelled hits, and how many produced hits
+					},
+					priority: 2,
+				},
+
+				{
+					name: 'hardlight',
+					timing: '_',
+					condition: function(fleet, hits, simRemaining, thisSideLost, throwType, onceSet,  battleSide, battleType, state, accumulations, options){
+						return (state.resources[battleSide].hardlight?.total > 0) && hits > 0 && ((hits > 1 && simRemaining === 0) || thisSideLost) && !onceSet.has(this.name);
+					},
+					effect: function(fleet, battleSide, battleType, state, accumulation, options){
+						
+						state.resources[battleSide].hardlight.total -= 1;
+						return [2,0, false]; // how many cancelled hits, and how many produced hits
+					},
+					priority: 2,
+				},
+				
 				
 
 					
 			]
+		}
+
+		function singularity(unit, battleSide, battleType,  state, accumulation, options, singularity, acronym){
+
+			var find = Object.entries(options[battleSide].copy).find(([key, val]) => val === true && state.poles[battleSide][key.slice(0,-4)] === undefined);
+			if (find === undefined){
+				return [];
+			}
+			
+			const otherSide = game.BattleSide.opponent(battleSide);
+			
+						
+			entry = find[0].slice(0,-4);
+
+			state.poles[battleSide][singularity] = acronym;
+						
+			if (entry in game.Technologies || entry in game.Abilities){
+				state.poles[battleSide][entry+'Owns'] = 'skip';
+
+				if (entry === 'smotheringPresence'){
+					applyContinuousEffectsOnUnits(state[otherSide], otherSide, battleType,  state, accumulation, options)
+				}
+				
+			} else {
+				
+				var unitType = undefined;
+				var onlyAdd = false;
+				if (entry.slice(-7,-1) === 'Abilit'){
+					state.poles[battleSide][entry] = 'skip';
+					entry = entry.slice(0,-7);
+					unitType = game.UniqueUnits[entry].type;
+					onlyAdd = true;
+
+				} else if (entry in game.UniqueUnits){
+					unitType = game.UniqueUnits[entry].type;
+
+					state.poles[battleSide][entry] = 'skip';
+				} else {
+					
+					entry = entry.charAt(0).toUpperCase() + entry.slice(1,-2);
+					unitType = game.StandardUpgrades[entry].type;
+					state.poles[battleSide][entry] = 'skip';
+
+					
+				}
+
+				
+				
+
+				replaceUnit(state[battleSide], unitType, battleSide, battleType,  state, accumulation, options);
+				
+			}
+
+			return [];
+
 		}
 
 		function initDeathEffects(){
@@ -8621,6 +9627,50 @@
 				// 	},
 				// 	priority: 1,
 				// },
+
+				{
+					name: 'atomize',
+					timing: '_',
+					condition: function(unit, unitSide, battleSide, battleType,  state, accumulation, options){
+
+						return unitSide === battleSide && options[battleSide].atomize && unit.type === game.UnitType.Flagship && !unit.isDamageGhost;
+						
+					},
+					destroyEffect: function(unit, battleSide, battleType,  state, accumulation, options){
+
+						
+							
+						var [attackerClone,defenderClone,flagsClone] = cloneFleetsAndFlags(state.attacker, state.defender, state.flags)
+						var resClone = resourcesClone(state.resources);
+						var polesClone = resourcesClone(state.poles);
+						var accClone = accumulationClone(accumulation);
+
+						var newState = {
+							attacker: [],
+							defender: [],
+							resources: resClone,
+							flags: flagsClone,
+							poles: polesClone,
+							startKey: undefined,
+							timing: state.timing,
+							prob: 0,
+							
+							turn: state.turn,
+							terminal: state.terminal,
+							retreat: state.retreat,
+							notParticipating: state.notParticipating,
+						}
+
+						var deadUnits = [attackerClone, defenderClone];
+
+						return [[1], [newState], [deadUnits], [accClone]];
+
+						
+					},
+					
+					priority: 0,
+					
+				},
 				{
 					name: 'mentakHero',
 					timing: 'duringCombat_',
@@ -8629,9 +9679,6 @@
 						
 						return state.poles[battleSide].mentakHero !== undefined && unit.typeShip && !unit.isDamageGhost && unitSide === otherSide;
 						
-
-						
-
 					},
 					destroyEffect: function(unit, battleSide, battleType,  state, accumulation, options){
 
@@ -8654,6 +9701,39 @@
 					
 				},
 
+				
+
+				{
+					name: 'yinAgent',
+					timing: 'duringCombat_',
+					condition: function(unit, unitSide, battleSide, battleType,  state, accumulation, options){
+						
+						
+						return state.resources[battleSide].yinAgent?.total > 0 && !unit.isDamageGhost && unitSide === battleSide;
+						
+
+						
+
+					},
+					destroyEffect: function(unit, battleSide, battleType,  state, accumulation, options){
+
+						state.resources[battleSide].yinAgent.total -= 1;
+						
+						var unitType = battleType === game.BattleType.Space ? game.UnitType.Fighter : game.UnitType.Infantry;
+						
+						createUnits(unitType, 2, battleSide, battleType, state, accumulation, options);
+						
+						
+						
+						return [];
+
+						
+					},
+					
+					priority: -1,
+					
+				},
+
 				{
 					name: 'singularity',
 					timing: 'duringCombat_',
@@ -8661,9 +9741,9 @@
 						
 						var otherSide = game.BattleSide.opponent(battleSide);
 
-						// print(state.poles[battleSide]);
+						var singularity = options[battleSide].abilities.singularity && state.poles[battleSide].singularity === undefined;
 
-						return options[battleSide].abilities.singularity && Object.values(options[battleSide].copy).some(val => val === true) && (state.poles[battleSide].singularity === undefined)  && !unit.isDamageGhost && unitSide === otherSide;
+						return singularity && Object.values(options[battleSide].copy).some(val => val === true) && !unit.isDamageGhost && unitSide === otherSide;
 
 					},
 					destroyEffect: function(unit, battleSide, battleType,  state, accumulation, options){
@@ -8673,163 +9753,267 @@
 						// const otherSide = game.BattleSide.opponent(battleSide);
 
 						
-						var entry = Object.entries(options[battleSide].copy).find(([key, val]) => val === true)[0];
-						
-						entry = entry.slice(0,-4);
-
-						state.poles[battleSide].singularity = 'SIN';
-						
-						if (entry in game.Technologies){
-							state.poles[battleSide][entry] = 'skip';
-						} else {
-							var newBaseStats = {};
-							var unitType = undefined;
-							var onlyAdd = false;
-							if (entry.slice(-7,-1) === 'Abilit'){
-								state.poles[battleSide][entry] = 'skip';
-								entry = entry.slice(0,-7);
-								// newBaseStats = {
-								// 	abilities: simpleListClone(game.UniqueUnits[entry]._baseStats.abilities),
-								// }
-								unitType = game.UniqueUnits[entry].type;
-								onlyAdd = true;
-
-							} else if (entry in game.UniqueUnits){
-								// newBaseStats = game.UniqueUnits[entry]._baseStats;
-								unitType = game.UniqueUnits[entry].type;
-
-								state.poles[battleSide][entry] = 'skip';
-							} else {
-								state.poles[battleSide][entry] = 'skip';
-								entry = entry.charAt(0).toUpperCase() + entry.slice(1,-2);
-								// newBaseStats = game.StandardUpgrades[entry]._baseStats;	
-								unitType = game.StandardUpgrades[entry].type;
-
-								
-							}
-							// newBaseStats = fastShallowCloneUnit(newBaseStats);
-							// print('trigger');
-							// print(newBaseStats);
-							// print(entry);
-
-							
-							
-
-							replaceUnit(state[battleSide], unitType, battleSide, battleType,  state, accumulation, options);
-							
-						}
-						// if (entry in game.UniqueUnitUpgrades || entry in game.StandardUpgrades)
-						
-						
-						
-						return [];
+						return singularity(unit, battleSide, battleType,  state, accumulation, options, 'singularity', 'SIN');
 					},
 					
 					priority: 1,
 					
 				},
-				// {
-				// 	name: 'selfAssembly',
-				// 	timing: '_',
-				// 	condition: function(unit, battleSide, battleType,  state, accumulation, options){
-				// 		return (options[battleSide].selfAssembly || state.poles[battleSide].selfAssembly !== undefined) && unit.type === game.UnitType.Mech && !unit.isDamageGhost;
-				// 	},
-				// 	destroyEffect: function(unit, battleSide, battleType,  state, accumulation, options){
+				{
+					name: 'singularityX',
+					timing: 'duringCombat_',
+					condition: function(unit, unitSide, battleSide, battleType,  state, accumulation, options){
 						
+						var otherSide = game.BattleSide.opponent(battleSide);
 
-				// 		accumulation[battleSide].tgsEarned += 1;
-						
+						var singularity = options[battleSide].abilities.singularityX && state.poles[battleSide].singularityX === undefined;
+
+						return singularity && Object.values(options[battleSide].copy).some(val => val === true) && !unit.isDamageGhost && unitSide === otherSide;
+
+					},
+					destroyEffect: function(unit, battleSide, battleType,  state, accumulation, options){
 
 						
-				// 		return [];
-				// 	},
+						
+						// const otherSide = game.BattleSide.opponent(battleSide);
+
+						
+						return singularity(unit, battleSide, battleType,  state, accumulation, options, 'singularityX', 'SINX');
+					},
 					
-				// 	priority: 0,
-				// },
-				// {
-				// 	name: 'courageous',
-				// 	timing: 'duringCombat_',
-				// 	condition: function(unit, battleSide, battleType,  state, accumulation, options){
-				// 		const otherSide = game.BattleSide.opponent(battleSide);
-				// 		return unit.typeShip && battleType === game.BattleType.Space && state.resources[battleSide].courageous?.total > 0 && checkFleet(state[otherSide],obj => obj.typeShip) && !unit.isDamageGhost;
-				// 	},
-				// 	destroyEffect: function(unit, battleSide, battleType,  state, accumulation, options){
-						
-
-				// 		var miss =  Math.max(Math.min((unit.battleValue - 1) / game.dieSides, 1), 0);
-				// 		var dice = [miss, 1-miss];
-				// 		var dice2 = [miss, 1-miss];
-				// 		if (state.resources[battleSide].meld?.total > 0){
-				// 			miss = getMeldMissFromBV(unit.battleValue);
-				// 			dice = [miss, 1-miss];
-				// 			state.resources[battleSide].meld.total -= 1;
-				// 		}
-
-				// 		state.resources[battleSide].courageous.total -= 1;
-
-				// 		var otherSide = game.BattleSide.opponent(battleSide);
-
-				// 		var transitionArray = slideMultiply(dice, dice2);
-				// 		var newStates = [];
-				// 		var deadUnits = [];
-				// 		var newAcc = [];
-				// 		for (var i = 0; i < transitionArray.length; i++){
-							
-				// 			var [attackerClone,defenderClone,flagsClone] = cloneFleetsAndFlags(state.attacker, state.defender, state.flags)
-				// 			var resClone = resourcesClone(state.resources);
-				// 			var polesClone = resourcesClone(state.poles);
-
-				// 			var dead = [];
-
-				// 			var newState = {
-				// 				attacker: attackerClone,
-				// 				defender: defenderClone,
-				// 				resources: resClone,
-				// 				flags: flagsClone,
-				// 				poles: polesClone,
-				// 				startKey: undefined,
-				// 				timing: state.timing,
-				// 				prob: 0,
-								
-				// 				turn: state.turn,
-				// 				terminal: state.terminal,
-				// 				retreat: state.retreat
-				// 			}
-
-				// 			// var deadAttacker = [];
-				// 			// var deadDefender = [];
-
-				// 			var j = 0;
-				// 			for (var k = newState[otherSide].length-1; k >=0 && j < i; k--){
-				// 				const unit = newState[otherSide][k];
-								
-				// 				if (unit.typeShip && !unit.isDamageGhost && !unit.invisible && !unit.immune){
-				// 					dead.push(unit);
-				// 					newState[otherSide].splice(k,1);
-				// 					j++;
-				// 				}
-				// 			}
-						
-
-							
-				// 			newStates.push(newState);
-
-				// 			var deadUnit = battleSide === game.BattleSide.attacker ? [[],dead] : [dead,[]];
-				// 			deadUnits.push(deadUnit)
-
-				// 			newAcc.push(accumulationClone(accumulation));
-				// 		}
-						
-
-						
-				// 		return [transitionArray, newStates, deadUnits, newAcc];
-				// 	},
+					priority: 1,
 					
-				// 	priority: function(unit) {
-				// 		const clamped = Math.max(1, Math.min(11, unit.battleValue));
-				// 		return 0 + 0.1*(9 - ((clamped - 1) / (11 - 1)) * 9);
-				// 	},
-				// },
+				},
+				{
+					name: 'singularityY',
+					timing: 'duringCombat_',
+					condition: function(unit, unitSide, battleSide, battleType,  state, accumulation, options){
+						
+						var otherSide = game.BattleSide.opponent(battleSide);
+
+						var singularity = options[battleSide].abilities.singularityY && state.poles[battleSide].singularityY === undefined;
+
+						return singularity && Object.values(options[battleSide].copy).some(val => val === true) && !unit.isDamageGhost && unitSide === otherSide;
+
+					},
+					destroyEffect: function(unit, battleSide, battleType,  state, accumulation, options){
+
+						
+						
+						// const otherSide = game.BattleSide.opponent(battleSide);
+
+						
+						return singularity(unit, battleSide, battleType,  state, accumulation, options, 'singularityY', 'SINY');
+					},
+					
+					priority: 1,
+					
+				},
+				{
+					name: 'singularityZ',
+					timing: 'duringCombat_',
+					condition: function(unit, unitSide, battleSide, battleType,  state, accumulation, options){
+						
+						var otherSide = game.BattleSide.opponent(battleSide);
+
+						var singularity = options[battleSide].abilities.singularityZ && state.poles[battleSide].singularityZ === undefined;
+
+						return singularity && Object.values(options[battleSide].copy).some(val => val === true) && !unit.isDamageGhost && unitSide === otherSide;
+
+					},
+					destroyEffect: function(unit, battleSide, battleType,  state, accumulation, options){
+
+						
+						
+						// const otherSide = game.BattleSide.opponent(battleSide);
+
+						
+						return singularity(unit, battleSide, battleType,  state, accumulation, options, 'singularityZ', 'SINZ');
+					},
+					
+					priority: 1,
+					
+				},
+				{
+					name: 'selfAssembly',
+					timing: '_',
+					condition: function(unit, unitSide, battleSide, battleType,  state, accumulation, options){
+
+						return unitSide === battleSide && (options[battleSide].selfAssembly || state.poles[battleSide].selfAssembly !== undefined) && unit.type === game.UnitType.Mech && !unit.isDamageGhost;
+						
+					},
+					destroyEffect: function(unit, battleSide, battleType,  state, accumulation, options){
+						
+
+						accumulation[battleSide].tgsEarned += 1;
+						
+
+						
+						return [];
+					},
+					
+					priority: 0,
+				},
+				{
+					name: 'courageous',
+					timing: 'duringCombat_',
+					condition: function(unit, unitSide, battleSide, battleType,  state, accumulation, options){
+						const otherSide = game.BattleSide.opponent(battleSide);
+
+						return unitSide === battleSide && state.resources[battleSide].courageous?.total > 0 && battleType === game.BattleType.Space && unit.typeShip && !unit.isDamageGhost && checkFleet(state[otherSide],obj => obj.typeShip);
+
+						
+					},
+					destroyEffect: function(unit, battleSide, battleType,  state, accumulation, options){
+						
+
+						var miss =  Math.max(Math.min((unit.battleValue - 1) / game.dieSides, 1), 0);
+						var dice = [miss, 1-miss];
+						var dice2 = [miss, 1-miss];
+						if (state.resources[battleSide].meld?.total > 0){
+							miss = getMeldMissFromBV(unit.battleValue);
+							dice = [miss, 1-miss];
+							state.resources[battleSide].meld.total -= 1;
+						}
+
+						state.resources[battleSide].courageous.total -= 1;
+
+						var otherSide = game.BattleSide.opponent(battleSide);
+
+						var transitionArray = slideMultiply(dice, dice2);
+						var newStates = [];
+						var deadUnits = [];
+						var newAcc = [];
+						for (var i = 0; i < transitionArray.length; i++){
+							
+							var [attackerClone,defenderClone,flagsClone] = cloneFleetsAndFlags(state.attacker, state.defender, state.flags)
+							var resClone = resourcesClone(state.resources);
+							var polesClone = resourcesClone(state.poles);
+
+							var dead = [];
+
+							var newState = {
+								attacker: attackerClone,
+								defender: defenderClone,
+								resources: resClone,
+								flags: flagsClone,
+								poles: polesClone,
+								startKey: undefined,
+								timing: state.timing,
+								prob: 0,
+								
+								turn: state.turn,
+								terminal: state.terminal,
+								retreat: state.retreat,
+								notParticipating: state.notParticipating,
+							}
+
+							// var deadAttacker = [];
+							// var deadDefender = [];
+
+							var j = 0;
+							for (var k = newState[otherSide].length-1; k >=0 && j < i; k--){
+								const unit = newState[otherSide][k];
+								
+								if (unit.typeShip && !unit.isDamageGhost && !unit.invisible && !unit.immune){
+									dead.push(unit);
+									newState[otherSide].splice(k,1);
+									j++;
+								}
+							}
+						
+
+							
+							newStates.push(newState);
+
+							var deadUnit = battleSide === game.BattleSide.attacker ? [[],dead] : [dead,[]];
+							deadUnits.push(deadUnit)
+
+							newAcc.push(accumulationClone(accumulation));
+						}
+						
+
+						
+						return [transitionArray, newStates, deadUnits, newAcc];
+					},
+					
+					priority: function(unit) {
+						const clamped = Math.max(1, Math.min(11, unit.battleValue));
+						return 0 + 0.1*(9 - ((clamped - 1) / (11 - 1)) * 9);
+					},
+				},
+
+				{
+					name: 'lash',
+					timing: '_',
+					condition: function(unit, unitSide, battleSide, battleType,  state, accumulation, options){
+						
+						var otherSide = game.BattleSide.opponent(battleSide);
+						return unitSide === battleSide && state.resources[battleSide].lash?.total > 0 && !unit.isDamageGhost && unit.cost !== undefined && checkFleet(state[otherSide],obj => obj.cost <= unit.cost);
+
+						
+					},
+					destroyEffect: function(unit, battleSide, battleType,  state, accumulation, options){
+						
+
+						var otherSide = game.BattleSide.opponent(battleSide);
+							
+						var [attackerClone,defenderClone,flagsClone] = cloneFleetsAndFlags(state.attacker, state.defender, state.flags)
+						var resClone = resourcesClone(state.resources);
+						var polesClone = resourcesClone(state.poles);
+						var accClone = accumulationClone(accumulation);
+
+						var dead = [];
+
+						var newState = {
+							attacker: attackerClone,
+							defender: defenderClone,
+							resources: resClone,
+							flags: flagsClone,
+							poles: polesClone,
+							startKey: undefined,
+							timing: state.timing,
+							prob: 0,
+							
+							turn: state.turn,
+							terminal: state.terminal,
+							retreat: state.retreat,
+							notParticipating: state.notParticipating,
+						}
+
+						var dead = {
+							attacker: [],
+							defender: [],
+						}
+
+						
+						for (var k = 0; k < newState[otherSide].length; k++){
+							const unitTemp = newState[otherSide][k];
+							
+							if (unitTemp.cost <= unit.cost && !unitTemp.isDamageGhost && !unitTemp.immune && !unitTemp.invisible){
+								dead[otherSide].push(newState[otherSide].splice(k,1)[0]);
+								k--;
+								break;
+							}
+						}
+					
+
+						
+						var deadUnits = [dead.attacker, dead.defender];
+
+						newState.resources[battleSide].lash.total -= 1;
+
+						return [[1], [newState], [deadUnits], [accClone]];
+					},
+					
+					priority: function(unit) {
+						
+						return 0 + (unit.cost || 0)/12
+					},
+				},
+
+
+				
 				
 
 					
@@ -8904,47 +10088,8 @@
 			]
 		}
 		
-		function fleetTransitionsVector(fleet, throwType, modifier, modifierRoll, reroll, mySideOptions) {
-			var vector = computeFleetTransitions(fleet, throwType, modifier, modifierRoll, reroll, mySideOptions).pop();
-			if (mySideOptions.plasmaScoringC && ((throwType==game.ThrowType.Bombardment && !(fleet.initialBombardment && mySideOptions.plasmaScoringFirstRound)) || throwType==game.ThrowType.SpaceCannon) && vector.length>1){
-				vector=listCoords(vector.transitions,throwType, modifier, modifierRoll);
-			}
-			return vector;
-		}
-		function listCoords(dimensions,throwType, modifier, modifierRoll) {
-			var cumulatives = new Array(dimensions.length);
-			var total = 1;
-			var altTotal=0;
-			modifierRoll = modifierRoll || 0;
-			var modifierFunction = function (unit) {
-				return unit.isDamageGhost ? 0 : typeof modifier === 'function' ? modifier(unit) : modifier;
-			};
-			var modifierRollFunction = function (unit) {
-				return unit.isDamageGhost ? 0 : typeof modifierRoll === 'function' ? modifierRoll(unit) : modifierRoll;
-			};
-			for (var d = dimensions.length - 1; d >= 0; d--) {
-				cumulatives[d] = total;
-				total *= dimensions[d].length;
-				altTotal+=dimensions[d].length;
-			}
-			var coords = new Array(altTotal-dimensions.length+1).fill(0);
-			for (var i = 0; i < total; i++) {
-				var prob=1;
-				var hits=0;
-				var misses=0;
-				for (var d = dimensions.length - 1; d >= 0; d--) {
-					var index=Math.floor(i / cumulatives[d]) % dimensions[d].length
-					prob *= dimensions[d][index];
-					hits+=index;
-					var unit=dimensions[d].unit;
-					misses+=unit[game.ThrowDice[throwType]]+modifierRollFunction(unit)>index && 10+modifierFunction(unit)>=unit[game.ThrowValues[throwType]];
-				}
-				if (misses>0)
-					hits+=1;
-				coords[hits] += prob;
-			}
-			return coords;
-		}
+		
+		
 		
 		
 		
@@ -8964,10 +10109,14 @@
 		function getMeldMissFromBV(bv){
 			
 
-			const miss = Math.clamp((bv - 1)*(bv-2) / (2*game.dieSides**2),0,1);
+			const miss = clamp((bv - 1)*(bv-2) / (2*game.dieSides**2),0,1);
 
 			return miss
 
+		}
+
+		function clamp(value, min, max){
+			return Math.min(max, Math.max(min, value));
 		}
 
 		// function cancelHits(transitionsVector, cancelledHits, cancelFrom) {
@@ -9112,33 +10261,10 @@
 		// 		return unit.planetaryShield && !unit.isDamageGhost && (!disable || (disable && unit.type !== game.UnitType.PDS));
 		// 	};
 		// }
-		function unitOnPlanetWithSpaceCannon(unit) {
-			return unit.spaceCannonDice !== 0 && !unit.typeShip;
-		}
-		function True(){
-			return function (){
-				return true;
-			}
-		}
-		function False(){
-			return function (){
-				return false;
-			}
-		}
-		function getKeyByValue(object, value) { 
-			return Object.keys(object).find(key => object[key] === value); 
-		}	
+		
+		
 
-		function notFighterShipNorGhost(combat){
-			return function (unit) {
-				return notFighterShip(combat)(unit) && !unit.isDamageGhost;
-			}
-		}
-		function ship(combat){
-			return function (unit) {
-				return unit.typeShip && validUnit(combat)(unit);
-			}
-		}
+		
 		function notFighterShip(combat){
 			return function (unit) {
 				return unit.type !== game.UnitType.Fighter && unit.typeShip && validUnit(combat)(unit);
@@ -9150,31 +10276,7 @@
 			}
 		}
 
-		function groundForce(unit) {
-			return unit.typeGroundForce && !unit.isDamageGhost;
-		}
-		function structure(unit) {
-			return unit.typeStructure && !unit.isDamageGhost;
-		}
-
-		function notFighterNorGroundForceShip(unit) {
-			return unit.type !== game.UnitType.Fighter && !unit.typeGroundForce && !unit.isDamageGhost;
-		}
 		
-		function hasBarrage(unit) {
-			return unit.barrageDice !== 0;
-		}
-
-		
-
-
-		function findLastIndex(array, predicate) {
-			for (var i = array.length - 1; 0 <= i; --i) {
-				if (predicate(array[i]))
-					return i;
-			}
-			return -1;
-		}
 		function sum(a, b) {
 			return a + b;
 		}
